@@ -1,0 +1,11 @@
+attribute vec4 vertices;
+attribute vec2 tcoords;
+varying vec2 ytcoords;
+
+void main() {
+	vec4 scaled_vertices = vertices / vec4(320.0, -320.0, 320.0, 1.0);
+	scaled_vertices = scaled_vertices + vec4(-1.0, 0.5, 0.0, 0.0);
+	gl_Position = scaled_vertices;
+
+	ytcoords = tcoords;
+}

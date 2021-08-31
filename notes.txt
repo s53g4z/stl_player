@@ -1,0 +1,67 @@
+#attributes provide vertex data to vertex shaders
+#uniforms are initialized by API calls
+#varyings pass calculated data from vertex shaders (rw) to frag shaders (ro)
+
+#cast variables to drop components
+
+#gl_* names are reserved
+#__* names might be reserved (?)
+
+#vec4 gl_FragColor or gl_FragData[gl_MaxDrawBuffers]
+#vec4 gl_FragCoord
+#bool gl_FrontFacing - "true if ... belongs to a front-facing primitive"
+#gl_PointCoord - 0.0 to 1.0
+
+#gl_Max...
+#MaxVertexAttibs,MaxVertexUniformVectors,MaxVaryingVectors,
+#MaxVertexTextureImageUnits,MaxCombinedTextureImageUnits,
+#MaxTextureImageUnits,MaxFragmentUniformVectors,
+#MaxDrawBuffers
+
+# generic vertex attribute index <-> attribute variable (until next link)
+
+------
+
+=== Vertex Shader Special Variables (7.1) ===
+vec4 gl_Position	<- must
+float gl_PointSize 	<-
+vec4 gl_ClipVertex	<-
+
+=== Fragment Shader Special Variables (7.2) ===
+vec4 gl_FragColor	<- either
+vec4 gl_FragData[]	<- or
+float gl_FragDepth	<- overrides gl_FragCoord.z
+vec4 gl_FragCoord	-> r/o
+bool gl_FrontFacing	-> r/o
+
+=== Vertex Shader Built-in Attributes (7.3) ===
+vec4 gl_Color
+vec4 gl_SecondaryColor
+vec4 gl_Normal
+vec4 gl_Vertex
+vec4 gl_MultiTexCoord{0..7}
+float gl_FogCoord
+
+=== Built-In Uniform State (7.5) ===
+mat4 gl_ModelViewMatrix
+mat4 gl_ProjectionMatrix
+mat4 gl_ModelViewProjectionMatrix
+mat4 gl_TextureMatrix[]
+// and more ... see page 56-59 of `GLSLangSpec.1.20.pdf`
+
+=== Vary Variables (7.6) ===
+Vertex:
+vec4 gl_FrontColor;
+vec4 gl_BackColor;
+vec4 gl_FrontSecondaryColor
+vec4 gl_BackSecondaryColor
+vec4 gl_TexCoord[]
+float gl_FogFragCoord
+
+Frag:
+vec4 gl_Color
+vec4 gl_SecondaryColor
+vec4 gl_TexCoord[]
+float gl_FogFragCoord
+vec2 gl_PointCoord
+
