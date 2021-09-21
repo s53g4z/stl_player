@@ -368,10 +368,10 @@ static void initialize_prgm() {
 	frag_shdr = glCreateShader(GL_FRAGMENT_SHADER);
 	assert(vtx_shdr && frag_shdr);
 	ssize_t src_len;
-	char *const vtx_src = safe_read("shaders/vtx3.txt", &src_len);
+	char *const vtx_src = safe_read("shaders/vtx.txt", &src_len);
 	glShaderSource(vtx_shdr, 1, (const char *const *)&vtx_src, (int *)&src_len);
 	free(vtx_src);
-	char *const frag_src = safe_read("shaders/frag3.txt", &src_len);
+	char *const frag_src = safe_read("shaders/frag.txt", &src_len);
 	glShaderSource(frag_shdr, 1, (const char *const *)&frag_src,
 		(int *)&src_len);
 	free(frag_src);

@@ -1,5 +1,5 @@
 
-# stl_player: a SuperTux v0.1.3 Level Player
+# SuperTux v0.1.3 Level Player
 
 ## Introduction
 
@@ -24,4 +24,4 @@ Run `./build.sh` to build. The single executable program emitted is the SuperTux
 
 ## Licensing
 
-All code in this repository, with the exception of the contents of the `gpl/` directory, belongs to the public domain under The Unlicense software license. The `gpl/` contents are licensed under the GNU GPL and come from the original GPL-licensed SuperTux v0.1.3 game project.
+All code in this repository, with the exception of the contents of the `gpl/` directory, belongs to the public domain under The Unlicense software license. The `gpl/` contents are licensed under the GNU GPL v2 and come from the original GPL-licensed SuperTux v0.1.3 game project.
