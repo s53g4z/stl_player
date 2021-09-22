@@ -17,5 +17,6 @@ char *safe_read(const char *const filename, ssize_t *has_read);
 bool isWhitespace(char ch);
 void trimWhitespace(const char **section, size_t *section_len);
 int intAsStrLen(int n);
+void printTM(uint8_t **const tm, const int width, const int height);
 
 #endif

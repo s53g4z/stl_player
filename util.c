@@ -244,10 +244,12 @@ void pushto_lvl_objects(stl *const lvl, stl_obj *obj) {
 	(lvl->objects)[lvl->objects_len++] = *obj;
 }
 
-// Return the length of n written out as an ASCII string. Works on 0 < n <= 9999
+// Return the length of n written out as an ASCII string. Works on 0<n<=99999
 int intAsStrLen(int n) {
-	assert(n > 0 && n <= 9999);
-	if (n > 999)
+	assert(n > 0 && n <= 99999);
+	if (n > 9999)
+		return 5;
+	else if (n > 999)
 		return 4;
 	else if (n > 99)
 		return 3;
@@ -258,8 +260,7 @@ int intAsStrLen(int n) {
 }
 
 // Debugging function. Print a TM to stderr.
-void printTM(uint8_t **const tm, const int width,
-	const int height) {
+void printTM(uint8_t **const tm, const int width, const int height) {
 	for (int h = 0; h < height; h++) {
 		for (int w = 0; w < width; w++)
 			fprintf(stderr, "%.3d ", tm[h][w]);

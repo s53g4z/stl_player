@@ -5,7 +5,7 @@
 
 const int SCREEN_WIDTH = 640, SCREEN_HEIGHT = 480;
 const int TILE_WIDTH = 32, TILE_HEIGHT = 32;
-int gScrollOffset = 0;
+static int gScrollOffset = 0, gCurrLevel = 1;
 
 typedef int Direction;
 enum { LEFT, RIGHT, UP, DOWN,
@@ -18,6 +18,17 @@ size_t worldItems_len, worldItems_cap;
 static stl lvl;
 
 Player *player;
+
+static const uint8_t ignored_tiles[] = {
+	6, 7, 8, 9, 25, 76, 85, 86, 87, 88, 89, 90, 91, 92, 126, 133,
+};  // todo burndown
+
+static enum gOTNi {
+	STL_DEAD_MRICEBLOCK_TEXTURE_LEFT = 0,
+	STL_DEAD_MRICEBLOCK_TEXTURE_RIGHT,
+	gOTNlen = 64,
+};
+static uint32_t gObjTextureNames[gOTNlen];  // shared across all levels
 
 WorldItem *worldItem_new(enum stl_obj_type type, int x, int y, int wi, int h,
 	float spx, float spy, bool gravity, char *imgnam,
@@ -175,7 +186,7 @@ int canMoveX(WorldItem *const w) {
 			WorldItem **colls = isCollidingWith(w, &collisions_len,
 				GDIRECTION_HORIZ);
 			for (size_t i = 0; i < collisions_len; i++) {
-				if (colls[i]->type == STL_COIN)
+				if (colls[i]->type == STL_COIN || colls[i]->type == STL_DEAD)
 					continue;  // ignore coin collisions
 				if ((w->speedX > 0 && rightOf(w) + 1 == leftOf(colls[i])) ||
 					(w->speedX < 0 && leftOf(w) - 1 == rightOf(colls[i]))) {
@@ -319,6 +330,12 @@ static void applyFrame() {
 	for (size_t i = 0; i < worldItems_len; i++)
 		if (worldItems[i]->type == STL_DEAD)
 			deletefrom_worldItems(i--);
+		else if (worldItems[i]->type == STL_BRICK_DESTROYED) {
+			int x = (worldItems[i]->x + gScrollOffset) / TILE_WIDTH;
+			int y = worldItems[i]->y / TILE_HEIGHT;
+			lvl.interactivetm[y][x] = 0;
+			deletefrom_worldItems(i--);
+		}
 }
 
 static void applyGravity() {
@@ -407,6 +424,12 @@ void fnret(WorldItem *self) {
 void pushto_worldItems(const WorldItem *const v);
 const WorldItem *worldItem_new_block(enum stl_obj_type type, int x, int y);
 
+void wiSwapTextures(WorldItem *const w) {
+	uint32_t tmp = w->texnam;
+	w->texnam = w->texnam2;
+	w->texnam2 = tmp;
+}
+
 // Callback for player frame.
 void fnpl(WorldItem *self) {
 	size_t collisions_len;
@@ -415,15 +438,59 @@ void fnpl(WorldItem *self) {
 		int x = (colls[i]->x + gScrollOffset) / TILE_WIDTH;
 		int y = colls[i]->y / TILE_HEIGHT;
 		switch (colls[i]->type) {
-			case SNOWBALL:
 			case MRICEBLOCK:
+				self->speedY = -5;
+				if (bottomOf(self) + 1 == topOf(colls[i])) {
+					// todo have a fixed set of texnams to index into
+					colls[i]->type = STL_DEAD_MRICEBLOCK;
+					//glDeleteTextures(1, &colls[i]->texnam);  // todo: turn
+					//glDeleteTextures(1, &colls[i]->texnam2);  // back on someday
+					colls[i]->texnam =
+						gObjTextureNames[STL_DEAD_MRICEBLOCK_TEXTURE_LEFT];
+					colls[i]->texnam2 =
+						gObjTextureNames[STL_DEAD_MRICEBLOCK_TEXTURE_RIGHT];
+					if (colls[i]->speedX > 0) {  // going right
+						wiSwapTextures(colls[i]);
+					}
+				} else if (leftOf(self) - 1 == rightOf(colls[i]) ||
+					rightOf(self) + 1 == leftOf(colls[i])) {
+					fprintf(stderr, "You died.\n");
+					self->type = STL_PLAYER_DEAD;
+				}
+				break;
+			case STL_DEAD_MRICEBLOCK:  // just sitting there
+				self->speedY = -5;
+				colls[i]->type = STL_KICKED_MRICEBLOCK;
+				if (self->x <= colls[i]->x) {  // player is left of the iceblock
+					if (colls[i]->speedX < 0)
+						wiSwapTextures(colls[i]);
+					colls[i]->speedX = 1;  // iceblock goes right
+				} else {  // player is right of the iceblock
+					if (colls[i]->speedX > 0)
+						wiSwapTextures(colls[i]);
+					colls[i]->speedX = -1;  // iceblock goes left
+				}
+				break;
+			case STL_KICKED_MRICEBLOCK:
+				self->speedY = -5;
+				if (bottomOf(self) + 1 == topOf(colls[i]))
+					colls[i]->type = STL_DEAD_MRICEBLOCK;
+				else if (leftOf(self) - 1 == rightOf(colls[i]) ||
+					rightOf(self) + 1 == leftOf(colls[i])) {
+					fprintf(stderr, "You died.\n");
+					self->type = STL_PLAYER_DEAD;
+				}
+				break;
+			case SNOWBALL:
 			case MRBOMB:
 			case STALACTITE:
 			case BOUNCINGSNOWBALL:
 			case FLYINGSNOWBALL:
+				self->speedY = -5;
 				if (leftOf(self) - 1 == rightOf(colls[i]) ||
 					rightOf(self) + 1 == leftOf(colls[i])) {
 					fprintf(stderr, "You died.\n");
+					self->type = STL_PLAYER_DEAD;
 					//exit(0);  // kill self todo
 				} else if (bottomOf(self) + 1 == topOf(colls[i]))
 					colls[i]->type = STL_DEAD;
@@ -445,14 +512,19 @@ void fnpl(WorldItem *self) {
 					break;  // else fall thru, assign dead, rm from lvl.i..TM
 			case STL_COIN:
 				colls[i]->type = STL_DEAD;
-				assert(lvl.interactivetm[y][x] == 44 || lvl.interactivetm[y][x] == 77);
+				//assert(lvl.interactivetm[y][x] == 44 || false);
 				lvl.interactivetm[y][x] = 0;
 				break;
 			case STL_WIN:
 				fprintf(stderr, "You win!\n");
+				self->type = STL_PLAYER_ASCENDED;
 				break;  // next level todo
+			//default:
+				//fprintf(stderr, "WARN: fnpl() unhandled case\n");
+				//break;
 		}
 	}
+	free(colls);
 }
 
 // Turn around a WorldItem (that has two texnams). Relatively cheap fn.
@@ -490,7 +562,7 @@ void maybeTurnAround(WorldItem *const self) {
 	self->x = origX;
 }
 
-// Callback for bot frame.
+// Callback for bot frame. Move the bot around.
 void fnbot(WorldItem *const self) {
 	if (self->patrol)
 		maybeTurnAround(self);  // patrol
@@ -509,6 +581,39 @@ void fnsnowball(WorldItem *const self) {
 }
 
 void fniceblock(WorldItem *const self) {
+	if (self->type == STL_DEAD_MRICEBLOCK) {
+		// don't move around
+		return;
+	} else if (self->type == STL_KICKED_MRICEBLOCK) {
+		if (self->speedX < 0)
+			self->speedX = -5;
+		else
+			self->speedX = 5;  // xxx slowwww
+		size_t collisions_len;
+		WorldItem **colls = isCollidingWith(self, &collisions_len, GDIRECTION_BOTH);
+		for (size_t i = 0; i < collisions_len; i++) {
+			switch (colls[i]->type) {
+				case STL_BRICK:
+					colls[i]->type = STL_BRICK_DESTROYED;  // break the block
+					//turnAround(self);  // bounce off the broken block
+					break;
+				case STL_DEAD_MRICEBLOCK:
+				case SNOWBALL:
+				case MRICEBLOCK:
+				case MRBOMB:
+				case STALACTITE:
+				case BOUNCINGSNOWBALL:
+				case FLYINGSNOWBALL:
+					colls[i]->type = STL_DEAD;  // kill that one
+					break;
+				case STL_KICKED_MRICEBLOCK:  // kill both
+					self->type = STL_DEAD;  // die self for real
+					colls[i]->type = STL_DEAD;  // kill the colls[i]
+					break;
+			}
+		}
+		free(colls);
+	}
 	fnbot(self);
 }
 
@@ -611,10 +716,16 @@ static void maybeInitgTextureNames() {
 	initGLTextureNam(gTextureNames[27], "textures/block1.data", false);
 	initGLTextureNam(gTextureNames[28], "textures/block2.data", false);
 	initGLTextureNam(gTextureNames[29], "textures/block3.data", false);
+	initGLTextureNam(gTextureNames[30], "textures/snow18.data", false);
+	initGLTextureNam(gTextureNames[31], "textures/snow19.data", false);
 	initGLTextureNam(gTextureNames[44], "textures/coin1.data", false);
+	initGLTextureNam(gTextureNames[47], "textures/block4.data", false);
 	initGLTextureNam(gTextureNames[48], "textures/block5.data", false);
+	initGLTextureNam(gTextureNames[76], "textures/waves-1.data", false);
 	initGLTextureNam(gTextureNames[77], "textures/brick0.data", false);
+	initGLTextureNam(gTextureNames[78], "textures/brick1.data", false);
 	gTextureNames[83] = gTextureNames[26];
+	initGLTextureNam(gTextureNames[84], "textures/bonus2-d.data", false);
 	initGLTextureNam(gTextureNames[85], "textures/cloud-00.data", false);
 	initGLTextureNam(gTextureNames[86], "textures/cloud-01.data", false);
 	initGLTextureNam(gTextureNames[87], "textures/cloud-02.data", false);
@@ -623,7 +734,10 @@ static void maybeInitgTextureNames() {
 	initGLTextureNam(gTextureNames[90], "textures/cloud-11.data", false);
 	initGLTextureNam(gTextureNames[91], "textures/cloud-12.data", false);
 	initGLTextureNam(gTextureNames[92], "textures/cloud-13.data", false);
-	gTextureNames[102] = gTextureNames[26];
+	gTextureNames[102] = gTextureNames[26];  // drawn as bonus2 but does nothing
+	gTextureNames[103] = gTextureNames[26];
+	gTextureNames[104] = gTextureNames[77];
+	gTextureNames[105] = gTextureNames[78];
 	initGLTextureNam(gTextureNames[113], "textures/snow20.data", false);
 	initGLTextureNam(gTextureNames[114], "textures/snow21.data", false);
 	gTextureNames[128] = gTextureNames[26];
@@ -633,13 +747,21 @@ static void maybeInitgTextureNames() {
 
 void drawGLvertices(const float *const vertices, const uint32_t texnam);
 
+static int cmpForUint8_t(const void *p, const void *q) {
+	const uint8_t *a = (const uint8_t *)p;
+	const uint8_t *b = (const uint8_t *)q;
+	int m = *a, n = *b;
+	return m - n;
+}
+
 // Draw a tile?
 static void paintTile(uint8_t tileID, int x, int y) {
 	if (x < -100) {
 		fprintf(stderr, "skipping a paintTile\n");
 		return;
 	}
-	if (tileID == 0)
+	if (tileID == 0 || bsearch(&tileID, ignored_tiles,
+		sizeof(ignored_tiles)/sizeof(uint8_t), sizeof(uint8_t), cmpForUint8_t))
 		return;
 	maybeInitgTextureNames();
 	
@@ -677,13 +799,6 @@ void paintTM(uint8_t **tm) {
 		}
 }
 
-static int cmpForUint8_t(const void *p, const void *q) {
-	const uint8_t *a = (const uint8_t *)p;
-	const uint8_t *b = (const uint8_t *)q;
-	int m = *a, n = *b;
-	return m - n;
-}
-
 // Helper for loadLevel.
 static void load_lvl_interactives() {
 	// Load in the interactives all at once, one time.
@@ -695,17 +810,14 @@ static void load_lvl_interactives() {
 			int y = h * TILE_HEIGHT;  // ibid
 			const uint8_t blocks[] = {  // tileIDs for solid tiles
 				10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 25,
-				27, 28, 29, 48, 102, 113, 114, 128,
-			};
-			const uint8_t ignored_tiles[] = {
-				7, 8, 9, 25, 85, 86, 87, 88, 89, 90, 91, 92, 126, 133,
+				27, 28, 29, 30, 31, 47, 48, 84, 102, 103, 105, 113, 114, 128,
 			};
 			if (bsearch(&tileID, blocks, sizeof(blocks)/sizeof(uint8_t), 
 				sizeof(uint8_t), cmpForUint8_t))
 				pushto_worldItems(worldItem_new_block(STL_BLOCK, x, y));
 			else if (tileID == 26 || tileID == 83)
 				pushto_worldItems(worldItem_new_block(STL_BONUS, x, y));
-			else if (tileID == 77)
+			else if (tileID == 77 || tileID == 78 || tileID == 104)
 				pushto_worldItems(worldItem_new_block(STL_BRICK, x, y));
 			else if (tileID == 132)
 				pushto_worldItems(worldItem_new_block(STL_WIN, x, y));
@@ -725,11 +837,11 @@ static void load_lvl_objects() {
 		WorldItem *w = NULL;
 		stl_obj *obj = &lvl.objects[i];
 		if (obj->type == SNOWBALL) {
-			w = worldItem_new(SNOWBALL, obj->x, obj->y,
+			w = worldItem_new(SNOWBALL, obj->x, obj->y - 1,
 				TILE_WIDTH, TILE_HEIGHT, -3, 1, true,
 				"textures/snowball.data", fnsnowball, true, true);
 		} else if (obj->type == MRICEBLOCK) {
-			w = worldItem_new(MRICEBLOCK, obj->x, obj->y,
+			w = worldItem_new(MRICEBLOCK, obj->x, obj->y - 1,
 				TILE_WIDTH, TILE_HEIGHT, -3, 1, true,
 				"textures/mriceblock.data", fniceblock, true, true);
 		} else
@@ -739,13 +851,17 @@ static void load_lvl_objects() {
 }
 
 static bool loadLevel(const char *const level_filename) {
+	// clean up from previous level load
 	for (size_t i = 0; i < worldItems_len; i++) {
-		glDeleteTextures(1, &worldItems[i]->texnam);
-		glDeleteTextures(1, &worldItems[i]->texnam2);
+		//glDeleteTextures(1, &worldItems[i]->texnam);  // debug: turn back on
+		//glDeleteTextures(1, &worldItems[i]->texnam2);  // someday.
 		free(worldItems[i]);
 	}
 	worldItems_len = 0;
+	gScrollOffset = 0;
 	
+	// load the new level
+	lrFailCleanup(NULL, &lvl);
 	lvl = levelReader(level_filename);
 	if (!lvl.hdr)
 		return false;
@@ -760,10 +876,23 @@ static bool loadLevel(const char *const level_filename) {
 	return true;
 }
 
+bool populateGOTN() {
+	glGenTextures(gOTNlen, gObjTextureNames);
+	
+	initGLTextureNam(gObjTextureNames[STL_DEAD_MRICEBLOCK_TEXTURE_LEFT],
+		"textures/mriceblock-flat-left.data", false);
+	initGLTextureNam(gObjTextureNames[STL_DEAD_MRICEBLOCK_TEXTURE_RIGHT],
+		"textures/mriceblock-flat-left.data", true);
+		
+	return glGetError() == GL_NO_ERROR;
+}
+
 static void initialize() {
 	initialize_prgm();
 	
-	assert(loadLevel("gpl/levels/level1.stl"));
+	assert(populateGOTN());
+	assert(loadLevel("gpl/levels/level5.stl"));  // xxx
+	gCurrLevel = 5;  // hack for debugging xxx
 }
 
 // Return true if w is off-screen.
@@ -823,6 +952,24 @@ static void clearScreen() {
 	glClear(GL_COLOR_BUFFER_BIT);
 }
 
+static void reloadLevel() {
+	if (gCurrLevel > 5)
+		gCurrLevel = 5;  // hack
+	
+	const char *file = NULL;
+	if (gCurrLevel == 1)  // todo: make some string malloc()'ing behavior here
+		file = "gpl/levels/level1.stl";
+	else if (gCurrLevel == 2)
+		file = "gpl/levels/level2.stl";
+	else if (gCurrLevel == 3)
+		file = "gpl/levels/level3.stl";
+	else if (gCurrLevel == 4)
+		file = "gpl/levels/level4.stl";
+	else if (gCurrLevel == 5)
+		file = "gpl/levels/level5.stl";
+	assert(loadLevel(file));
+}
+
 static void core(keys *const k) {
 	static bool initialized = false;
 	if (!initialized) {
@@ -840,10 +987,11 @@ static void core(keys *const k) {
 	paintTM(lvl.foregroundtm);
 	drawWorldItems();
 	
-	if (player->type == STL_PLAYER_DEAD) {
-		assert(loadLevel("levels/gpl/level1.stl"));
-	} else if (player->type == STL_PLAYER_ASCENDED) {
-		assert(loadLevel("levels/gpl/level2.stl"));
+	if (player->type == STL_PLAYER_DEAD) {  // reload the current level
+		reloadLevel();
+	} else if (player->type == STL_PLAYER_ASCENDED) {  // reload the next level
+		gCurrLevel++;
+		reloadLevel();
 	}
 }
 
