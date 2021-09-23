@@ -65,7 +65,7 @@ static x_dat initialize_xwin(void) {
 	assert(0 != s);
 	
 	x_dat xd;
-	xd.d = XOpenDisplay(NULL);  // XCB has poor docs
+	xd.d = XOpenDisplay(NULL);  // using Xlib, b/c XCB has poor documentation
 	set_xkbrepeat(&xd);
 	Window x_drw = XDefaultRootWindow(xd.d);
 	XSetWindowAttributes xswa = { 0 };
@@ -321,6 +321,9 @@ static bool fn(void) {
 	initialize_surface(&ed, &xd);
 	
 	glViewport(0, 0, 640, 640);
+	glEnable(GL_BLEND);
+	// https://gamedev.stackexchange.com/questions/32027/
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	draw(&k);  // initial paint (before multithreading occurs)
 	eglSwapBuffers(ed.d, ed.s);
 
