@@ -310,18 +310,31 @@ void maybeScrollScreen() {
 	}
 }
 
+void wiSwapTextures(WorldItem *const w) {
+	uint32_t tmp = w->texnam;
+	w->texnam = w->texnam2;
+	w->texnam2 = tmp;
+}
+
 static void processInput(const keys *const k) {
 	assert(k && SCREEN_WIDTH && SCREEN_HEIGHT);
+	static bool lastDirectionWasRight = true;
 	
 	if (k->keyD) {
 		player->speedX = fabs(player->speedX);
 		player->x += canMoveTo(player, GDIRECTION_HORIZ);
+		if (!lastDirectionWasRight)
+			wiSwapTextures(player);
+		lastDirectionWasRight = true;
 	}
 	if (k->keyA) {
 		assert(player->speedX != INT_MIN);
 		if (player->speedX > 0)
 			player->speedX *= -1;
 		player->x += canMoveTo(player, GDIRECTION_HORIZ);
+		if (lastDirectionWasRight)
+			wiSwapTextures(player);
+		lastDirectionWasRight = false;
 	}
 	if (k->keyW)
 		player->speedY = PLAYER_JUMP_SPEED;
@@ -434,12 +447,6 @@ void fnret(WorldItem *self) {
 
 void pushto_worldItems(const WorldItem *const v);
 const WorldItem *worldItem_new_block(enum stl_obj_type type, int x, int y);
-
-void wiSwapTextures(WorldItem *const w) {
-	uint32_t tmp = w->texnam;
-	w->texnam = w->texnam2;
-	w->texnam2 = tmp;
-}
 
 bool hitScreenBottom(const WorldItem *const self) {
 	return self->y + self->height + 1 >= SCREEN_HEIGHT;
@@ -976,7 +983,7 @@ static bool loadLevel(const char *const level_filename) {
 	stlPrinter(&lvl);
 	pushto_worldItems(worldItem_new(STL_PLAYER, lvl.start_pos_x,
 		lvl.start_pos_y, 30, 30, PLAYER_RUN_SPEED, 1, true,
-		"textures/texture3.rgb", fnpl, false, false, false));
+		"textures/tux.data", fnpl, true, false, true));
 	player = worldItems[0];
 	load_lvl_objects();
 	load_lvl_interactives();
