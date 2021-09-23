@@ -26,7 +26,7 @@ const float PLAYER_RUN_SPEED = 15;  // 6 xxx
 const float BOUNCINGSNOWBALL_JUMP_SPEED = -15;
 
 static const uint8_t ignored_tiles[] = {
-	6, 7, 8, 9, 25, 126, 133,
+	6, 126, 133,
 };  // todo burndown
 
 static enum gOTNi {
@@ -471,8 +471,8 @@ void fnpl(WorldItem *self) {
 					if (colls[i]->speedX > 0) {  // going right
 						wiSwapTextures(colls[i]);
 					}
-				} else if (leftOf(self) - 1 == rightOf(colls[i]) ||
-					rightOf(self) + 1 == leftOf(colls[i])) {
+				} else if (true || leftOf(self) - 1 == rightOf(colls[i]) ||
+					rightOf(self) + 1 == leftOf(colls[i])) {  // xxx
 					fprintf(stderr, "You died.\n");
 					self->type = STL_PLAYER_DEAD;
 				}
@@ -765,6 +765,9 @@ static void maybeInitgTextureNames() {
 	assert(glGetError() == GL_NO_ERROR);
 	
 	// todo: connect the rest of the valid texturename indexes to files
+	initGLTextureNam(gTextureNames[7], "textures/snow1.data", false, true);
+	initGLTextureNam(gTextureNames[8], "textures/snow2.data", false, true);
+	initGLTextureNam(gTextureNames[9], "textures/snow3.data", false, true);
 	initGLTextureNam(gTextureNames[10], "textures/snow4.data", false, false);
 	initGLTextureNam(gTextureNames[11], "textures/snow5.data", false, false);
 	initGLTextureNam(gTextureNames[12], "textures/snow6.data", false, false);
@@ -779,14 +782,15 @@ static void maybeInitgTextureNames() {
 	initGLTextureNam(gTextureNames[21], "textures/snow15.data", false, false);
 	initGLTextureNam(gTextureNames[22], "textures/snow16.data", false, false);
 	initGLTextureNam(gTextureNames[23], "textures/snow17.data", false, false);
-	initGLTextureNam(gTextureNames[25], "textures/background8.data", false, false);
+	initGLTextureNam(gTextureNames[24], "textures/background7.data", false, true);
+	initGLTextureNam(gTextureNames[25], "textures/background8.data", false, true);
 	initGLTextureNam(gTextureNames[26], "textures/bonus2.data", false, false);
 	initGLTextureNam(gTextureNames[27], "textures/block1.data", false, false);
 	initGLTextureNam(gTextureNames[28], "textures/block2.data", false, false);
 	initGLTextureNam(gTextureNames[29], "textures/block3.data", false, false);
 	initGLTextureNam(gTextureNames[30], "textures/snow18.data", false, false);
 	initGLTextureNam(gTextureNames[31], "textures/snow19.data", false, false);
-	initGLTextureNam(gTextureNames[44], "textures/coin1.data", false, false);
+	initGLTextureNam(gTextureNames[44], "textures/coin1.data", false, true);
 	initGLTextureNam(gTextureNames[47], "textures/block4.data", false, false);
 	initGLTextureNam(gTextureNames[48], "textures/block5.data", false, false);
 	initGLTextureNam(gTextureNames[76], "textures/waves-1.data", false, true);
@@ -806,9 +810,20 @@ static void maybeInitgTextureNames() {
 	gTextureNames[103] = gTextureNames[26];
 	gTextureNames[104] = gTextureNames[77];
 	gTextureNames[105] = gTextureNames[78];
+	initGLTextureNam(gTextureNames[106], "textures/background1.data", false, true);
+	initGLTextureNam(gTextureNames[107], "textures/background2.data", false, true);
+	initGLTextureNam(gTextureNames[108], "textures/background3.data", false, true);
+	initGLTextureNam(gTextureNames[109], "textures/background4.data", false, true);
+	initGLTextureNam(gTextureNames[110], "textures/background5.data", false, true);
+	initGLTextureNam(gTextureNames[111], "textures/background6.data", false, true);
 	initGLTextureNam(gTextureNames[113], "textures/snow20.data", false, false);
 	initGLTextureNam(gTextureNames[114], "textures/snow21.data", false, false);
+	initGLTextureNam(gTextureNames[122], "textures/snowbg1.data", false, true);
+	initGLTextureNam(gTextureNames[123], "textures/snowbg2.data", false, true);
+	initGLTextureNam(gTextureNames[124], "textures/snowbg3.data", false, true);
+	initGLTextureNam(gTextureNames[125], "textures/snowbg4.data", false, true);
 	gTextureNames[128] = gTextureNames[26];
+	gTextureNames[201] = gTextureNames[76];
 	
 	assert(glGetError() == GL_NO_ERROR);
 }
@@ -884,7 +899,8 @@ static void load_lvl_interactives() {
 			int y = h * TILE_HEIGHT;  // ibid
 			const uint8_t blocks[] = {  // tileIDs for solid tiles
 				10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 25,
-				27, 28, 29, 30, 31, 47, 48, 84, 102, 103, 105, 113, 114, 128,
+				27, 28, 29, 30, 31, 47, 48, 84, 102, 103, 105, 113, 114,
+				124, 125, 128,
 			};
 			if (bsearch(&tileID, blocks, sizeof(blocks)/sizeof(uint8_t), 
 				sizeof(uint8_t), cmpForUint8_t))
@@ -897,9 +913,16 @@ static void load_lvl_interactives() {
 				pushto_worldItems(worldItem_new_block(STL_WIN, x, y));
 			else if (tileID == 44)
 				pushto_worldItems(worldItem_new_block(STL_COIN, x, y));
-			else if ((tileID >= 85 && tileID <= 92) || tileID == 76) {
+			else if ((tileID >= 85 && tileID <= 92) || tileID == 76 ||
+				(tileID >= 7 && tileID <= 9) || tileID == 24 || tileID == 25 ||
+				tileID == 122 || tileID == 123 || tileID == 201 ||
+				(tileID >= 106 && tileID <= 111)) {
 				// for some reason, cloud tiles show up in interactive-tm
 				// 76 is a wave (water wave)
+				// 7, 8, 9 are snow layer for the ground
+				// 24 and 25 are patches of grass o_O
+				// 106-111 are a pile of snow
+				// 201 is "wave-trans-*.png"
 			} else if (tileID > 0 &&
 				!bsearch(&tileID, ignored_tiles,
 					sizeof(ignored_tiles)/sizeof(uint8_t), sizeof(uint8_t),
