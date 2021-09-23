@@ -1042,7 +1042,7 @@ static void drawWorldItems() {
 }
 
 static void clearScreen() {
-	glClearColor(0, 0, 0, 1);
+	glClearColor(30.0/255, 85.0/255, 150.0/255, 1);  // light blue
 	glClear(GL_COLOR_BUFFER_BIT);
 }
 
