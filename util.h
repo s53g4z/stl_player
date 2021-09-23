@@ -18,5 +18,6 @@ bool isWhitespace(char ch);
 void trimWhitespace(const char **section, size_t *section_len);
 int intAsStrLen(int n);
 void printTM(uint8_t **const tm, const int width, const int height);
+void must(unsigned long long condition);
 
 #endif

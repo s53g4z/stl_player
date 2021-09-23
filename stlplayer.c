@@ -19,11 +19,11 @@ static stl lvl;
 
 Player *player;
 
-const float MRICEBLOCK_KICKSPEED = 8;
+const float MRICEBLOCK_KICKSPEED = 9;
 const float PLAYER_BOUNCE_SPEED = -5;
-const float PLAYER_JUMP_SPEED = -10;
-const float PLAYER_RUN_SPEED = 15;  // 6 xxx
-const float BOUNCINGSNOWBALL_JUMP_SPEED = -15;
+const float PLAYER_JUMP_SPEED = -9;
+const float PLAYER_RUN_SPEED = 8;
+const float BOUNCINGSNOWBALL_JUMP_SPEED = -10;
 
 static const uint8_t ignored_tiles[] = {
 	6, 126, 133,
@@ -32,10 +32,16 @@ static const uint8_t ignored_tiles[] = {
 static enum gOTNi {
 	STL_DEAD_MRICEBLOCK_TEXTURE_LEFT = 0,
 	STL_DEAD_MRICEBLOCK_TEXTURE_RIGHT,
-	SNOWBALL_TEXTURE_LEFT,
-	SNOWBALL_TEXTURE_RIGHT,
-	BOUNCINGSNOWBALL_TEXTURE_LEFT,
-	BOUNCINGSNOWBALL_TEXTURE_RIGHT,
+	STL_SNOWBALL_TEXTURE_LEFT,
+	STL_SNOWBALL_TEXTURE_RIGHT,
+	STL_BOUNCINGSNOWBALL_TEXTURE_LEFT,
+	STL_BOUNCINGSNOWBALL_TEXTURE_RIGHT,
+	STL_BOMB_TEXTURE_LEFT,
+	STL_BOMB_TEXTURE_RIGHT,
+	STL_BOMBX_TEXTURE_LEFT,
+	STL_BOMBX_TEXTURE_RIGHT,
+	STL_BOMB_EXPLODING_TEXTURE_1,
+	STL_BOMB_EXPLODING_TEXTURE_2,
 	gOTNlen = 64,
 };
 static uint32_t gObjTextureNames[gOTNlen];  // shared across all levels
@@ -310,23 +316,46 @@ void maybeScrollScreen() {
 	}
 }
 
+void wiSwapTextures(WorldItem *const w) {
+	uint32_t tmp = w->texnam;
+	w->texnam = w->texnam2;
+	w->texnam2 = tmp;
+}
+
+bool gLastDirectionWasRight = true;
+
 static void processInput(const keys *const k) {
 	assert(k && SCREEN_WIDTH && SCREEN_HEIGHT);
 	
 	if (k->keyD) {
 		player->speedX = fabs(player->speedX);
 		player->x += canMoveTo(player, GDIRECTION_HORIZ);
+		if (!gLastDirectionWasRight)
+			wiSwapTextures(player);
+		gLastDirectionWasRight = true;
 	}
 	if (k->keyA) {
 		assert(player->speedX != INT_MIN);
 		if (player->speedX > 0)
 			player->speedX *= -1;
 		player->x += canMoveTo(player, GDIRECTION_HORIZ);
+		if (gLastDirectionWasRight)
+			wiSwapTextures(player);
+		gLastDirectionWasRight = false;
 	}
 	if (k->keyW)
 		player->speedY = PLAYER_JUMP_SPEED;
 	if (k->keyR)
 		player_toggle_size();
+	
+	// debugging
+	if (k->keyE) {
+		player_toggle_size();
+		if (player->speedX == PLAYER_RUN_SPEED) 
+			player->speedX *= 2;
+		else
+			player->speedX = PLAYER_RUN_SPEED;
+	}
 	
 	maybeScrollScreen();
 }
@@ -357,7 +386,7 @@ static void applyGravity() {
 		if (moveY == 0)
 			w->speedY = 1;
 		else {
-			w->speedY++;
+			w->speedY += 0.5;
 			//w->speedY *= 2;
 			w->y += moveY;
 		}
@@ -432,14 +461,8 @@ void fnret(WorldItem *self) {
 	return;
 }
 
-void pushto_worldItems(const WorldItem *const v);
-const WorldItem *worldItem_new_block(enum stl_obj_type type, int x, int y);
-
-void wiSwapTextures(WorldItem *const w) {
-	uint32_t tmp = w->texnam;
-	w->texnam = w->texnam2;
-	w->texnam2 = tmp;
-}
+static void pushto_worldItems(const WorldItem *const v);
+static const WorldItem *worldItem_new_block(enum stl_obj_type type, int x, int y);
 
 bool hitScreenBottom(const WorldItem *const self) {
 	return self->y + self->height + 1 >= SCREEN_HEIGHT;
@@ -501,7 +524,8 @@ void fnpl(WorldItem *self) {
 				}
 				break;
 			case SNOWBALL:
-			case MRBOMB:
+			case STL_BOMB:
+			case STL_BOMB_TICKING:
 			case STALACTITE:
 			case BOUNCINGSNOWBALL:
 			case FLYINGSNOWBALL:
@@ -512,12 +536,23 @@ void fnpl(WorldItem *self) {
 					self->type = STL_PLAYER_DEAD;
 				} else if (bottomOf(self) + 1 == topOf(colls[i])) {
 					self->speedY = PLAYER_BOUNCE_SPEED;  // bounce off corpse
-					colls[i]->type = STL_DEAD;
+					if (colls[i]->type == STL_BOMB) {
+						colls[i]->type = STL_BOMB_TICKING;
+						colls[i]->speedX = fabs(colls[i]->speedX);
+						colls[i]->texnam = gObjTextureNames[STL_BOMBX_TEXTURE_RIGHT];
+						colls[i]->texnam2 = gObjTextureNames[STL_BOMBX_TEXTURE_LEFT];
+						colls[i]->patrol = false;
+					} else if (colls[i]->type != STL_BOMB_TICKING)
+						colls[i]->type = STL_DEAD;
 				}
+				break;
+			case STL_BOMB_EXPLODING:
+				fprintf(stderr, "You died.\n");
+				self->type = STL_PLAYER_DEAD;
 				break;
 			case STL_BONUS:
 				if (colls[i]->state == 1 &&  // bonus is active
-					topOf(self) - 1 == bottomOf(colls[i]) && y > 0) {
+					topOf(self) - 1 == bottomOf(colls[i])) {
 					colls[i]->state = 0;  // deactivate (b/c one use only)
 					lvl.interactivetm[y - 1][x] = 44;
 					pushto_worldItems(worldItem_new_block(
@@ -528,7 +563,7 @@ void fnpl(WorldItem *self) {
 				}
 				break;
 			case STL_BRICK:
-				if (topOf(self) - 1 != bottomOf(colls[i]))
+				if (false || topOf(self) - 1 != bottomOf(colls[i]))
 					break;  // else fall thru, assign dead, rm from lvl.i..TM
 			case STL_COIN:
 				colls[i]->type = STL_DEAD;
@@ -594,9 +629,9 @@ void fnbot(WorldItem *const self) {
 	self->x += moveX;
 }
 
-enum WorldItemState { ALIVE, DEAD };
+static enum WorldItemState { ALIVE, DEAD };
 
-void fnsnowball(WorldItem *const self) {
+static void fnsnowball(WorldItem *const self) {
 	if (hitScreenBottom(self)) {
 		self->type = STL_DEAD;
 		return;
@@ -604,7 +639,7 @@ void fnsnowball(WorldItem *const self) {
 	fnbot(self);
 }
 
-void fnbouncingsnowball(WorldItem *const self) {
+static void fnbouncingsnowball(WorldItem *const self) {
 	if (hitScreenBottom(self)) {
 		self->type = STL_DEAD;
 		return;
@@ -648,7 +683,7 @@ void fniceblock(WorldItem *const self) {
 				case STL_DEAD_MRICEBLOCK:
 				case SNOWBALL:
 				case MRICEBLOCK:
-				case MRBOMB:
+				case STL_BOMB:
 				case STALACTITE:
 				case BOUNCINGSNOWBALL:
 				case FLYINGSNOWBALL:
@@ -665,8 +700,95 @@ void fniceblock(WorldItem *const self) {
 	fnbot(self);
 }
 
+// Set self type to exploding, and reset the framesElapsed counter.
+void bombExplodes(WorldItem *const self, int *const framesElapsed) {
+	self->type = STL_BOMB_EXPLODING;
+	self->gravity = false;
+	self->x -= self->width;
+	self->y -= self->height;
+	self->width *= 3;
+	self->height *= 3;
+	self->texnam = gObjTextureNames[STL_BOMB_EXPLODING_TEXTURE_1];  // darker
+	self->texnam2 = gObjTextureNames[STL_BOMB_EXPLODING_TEXTURE_2];  // brighter
+	*framesElapsed = 0;  // reset the frame counter
+}
+
+static void bombHandleExplosionCollisions(WorldItem *const self) {
+	size_t collisions_len;
+	WorldItem **const colls = isCollidingWith(self, &collisions_len,
+		GDIRECTION_BOTH);
+	for (size_t i = 0; i < collisions_len; i++) {
+		WorldItem *const coll = colls[i];
+		switch (coll->type) {
+			case STL_PLAYER:
+				fprintf(stderr, "You died.\n");  // todo turn into a fn
+				coll->type = STL_PLAYER_DEAD;
+				break;
+			case MRICEBLOCK:
+			case STL_DEAD_MRICEBLOCK:
+			case STL_KICKED_MRICEBLOCK:
+			case SNOWBALL:
+			case STALACTITE:
+			case BOUNCINGSNOWBALL:
+			case FLYINGSNOWBALL:
+				coll->type = STL_DEAD;
+				break;
+			case STL_BRICK:
+			case STL_COIN:
+				coll->type = STL_BRICK_DESTROYED;
+				break;
+			case STL_BOMB:
+				coll->type = STL_BOMB_TICKING;
+				coll->speedX = fabs(coll->speedX);
+				coll->texnam = gObjTextureNames[STL_BOMBX_TEXTURE_RIGHT];
+				coll->texnam2 = gObjTextureNames[STL_BOMBX_TEXTURE_LEFT];
+				coll->patrol = false;
+				break;
+			case STL_BONUS:
+				coll->state = 0;  // destroy the bonus block
+		}
+	}
+	free(colls);
+}
+
+static void fnbomb(WorldItem *const self) {
+	static int framesElapsed = 0;
+	
+	if (hitScreenBottom(self)) {
+		self->type = STL_DEAD;
+		return;
+	}
+	
+	if (self->type == STL_BOMB_TICKING && framesElapsed >= 128) {
+		bombExplodes(self, &framesElapsed);
+	}
+	
+	if (self->type == STL_BOMB_TICKING) {
+		// chase the player
+		if ((player->x < self->x && self->speedX > 0) ||
+			(player->x > self->x && self->speedX < 0)) {
+			assert(self->speedX != INT_MIN);
+			self->speedX *= -1;
+			wiSwapTextures(self);
+		}
+		fnbot(self);
+		framesElapsed++;
+	} else if (self->type == STL_BOMB_EXPLODING) {
+		if (framesElapsed >= 60)
+			self->type = STL_DEAD;
+		else {
+			if (framesElapsed % 5 == 0)
+				wiSwapTextures(self);
+			bombHandleExplosionCollisions(self);
+			framesElapsed++;
+		}
+	}
+	else
+		fnbot(self);
+}
+
 // Push a WorldItem onto worldItems. (auto-inits and grows the array)
-void pushto_worldItems(const WorldItem *const v) {
+static void pushto_worldItems(const WorldItem *const v) {
 	WorldItem *const w = (WorldItem *const)v;
 	if (worldItems_cap == 0) {  // uninitialized
 		worldItems_cap = 1;
@@ -681,11 +803,6 @@ void pushto_worldItems(const WorldItem *const v) {
 }
 
 static uint32_t gTextureNames[256];
-
-void must(unsigned long long condition) {
-	if (!condition)
-		exit(1);
-}
 
 // Mirror a 64 * 64 * 4 array of {char r, g, b, a}.
 void mirrorTexelImgAlpha(void *imgmem) {
@@ -859,7 +976,7 @@ static void paintTile(uint8_t tileID, int x, int y) {
 }
 
 // Handy convenience function to make a new block. x and y are screen coords.
-const WorldItem *worldItem_new_block(enum stl_obj_type type, int x, int y) {
+static const WorldItem *worldItem_new_block(enum stl_obj_type type, int x, int y) {
 	int width = TILE_WIDTH, height = TILE_HEIGHT;
 	if (type == SNOWBALL || type == MRICEBLOCK || type == STL_COIN) {
 		width -= 2;  // slightly smaller hitbox
@@ -940,8 +1057,8 @@ static void load_lvl_objects() {
 			w = worldItem_new(SNOWBALL, obj->x, obj->y - 1,
 				TILE_WIDTH, TILE_HEIGHT, -3, 1, true,
 				NULL, fnsnowball, true, true, false);
-			w->texnam = gObjTextureNames[SNOWBALL_TEXTURE_LEFT];
-			w->texnam2 = gObjTextureNames[SNOWBALL_TEXTURE_RIGHT];
+			w->texnam = gObjTextureNames[STL_SNOWBALL_TEXTURE_LEFT];
+			w->texnam2 = gObjTextureNames[STL_SNOWBALL_TEXTURE_RIGHT];
 		} else if (obj->type == MRICEBLOCK) {
 			w = worldItem_new(MRICEBLOCK, obj->x, obj->y - 1,
 				TILE_WIDTH, TILE_HEIGHT, -3, 1, true,
@@ -950,8 +1067,14 @@ static void load_lvl_objects() {
 			w = worldItem_new(BOUNCINGSNOWBALL, obj->x, obj->y - 1,
 				TILE_WIDTH, TILE_HEIGHT, -3, 1, true,
 				NULL, fnbouncingsnowball, true, false, false);
-			w->texnam = gObjTextureNames[BOUNCINGSNOWBALL_TEXTURE_LEFT];
-			w->texnam2 = gObjTextureNames[BOUNCINGSNOWBALL_TEXTURE_RIGHT];
+			w->texnam = gObjTextureNames[STL_BOUNCINGSNOWBALL_TEXTURE_LEFT];
+			w->texnam2 = gObjTextureNames[STL_BOUNCINGSNOWBALL_TEXTURE_RIGHT];
+		} else if (obj->type == STL_BOMB) {
+			w = worldItem_new(STL_BOMB, obj->x, obj->y - 1,
+				TILE_WIDTH, TILE_HEIGHT, -3, 1, true, NULL, fnbomb, true, true,
+				true);
+			w->texnam = gObjTextureNames[STL_BOMB_TEXTURE_LEFT];
+			w->texnam2 = gObjTextureNames[STL_BOMB_TEXTURE_RIGHT];
 		} else
 			continue;
 		pushto_worldItems(w);
@@ -976,7 +1099,7 @@ static bool loadLevel(const char *const level_filename) {
 	stlPrinter(&lvl);
 	pushto_worldItems(worldItem_new(STL_PLAYER, lvl.start_pos_x,
 		lvl.start_pos_y, 30, 30, PLAYER_RUN_SPEED, 1, true,
-		"textures/texture3.rgb", fnpl, false, false, false));
+		"textures/tux.data", fnpl, true, false, true));
 	player = worldItems[0];
 	load_lvl_objects();
 	load_lvl_interactives();
@@ -992,14 +1115,27 @@ bool populateGOTN() {
 		"textures/mriceblock-flat-left.data", false, false);
 	initGLTextureNam(gObjTextureNames[STL_DEAD_MRICEBLOCK_TEXTURE_RIGHT],
 		"textures/mriceblock-flat-left.data", true, false);
-	initGLTextureNam(gObjTextureNames[SNOWBALL_TEXTURE_LEFT],
+	initGLTextureNam(gObjTextureNames[STL_SNOWBALL_TEXTURE_LEFT],
 		"textures/Asnowball.data", false, true);
-	initGLTextureNam(gObjTextureNames[SNOWBALL_TEXTURE_RIGHT],
+	initGLTextureNam(gObjTextureNames[STL_SNOWBALL_TEXTURE_RIGHT],
 		"textures/Asnowball.data", true, true);
-	initGLTextureNam(gObjTextureNames[BOUNCINGSNOWBALL_TEXTURE_LEFT],
+	initGLTextureNam(gObjTextureNames[STL_BOUNCINGSNOWBALL_TEXTURE_LEFT],
 		"textures/Abouncingsnowball.data", false, true);
-	initGLTextureNam(gObjTextureNames[BOUNCINGSNOWBALL_TEXTURE_RIGHT],
+	initGLTextureNam(gObjTextureNames[STL_BOUNCINGSNOWBALL_TEXTURE_RIGHT],
 		"textures/Abouncingsnowball.data", true, true);
+		
+	initGLTextureNam(gObjTextureNames[STL_BOMB_TEXTURE_LEFT],
+		"textures/bomb.data", false, true);
+	initGLTextureNam(gObjTextureNames[STL_BOMB_TEXTURE_RIGHT],
+		"textures/bomb.data", true, true);
+	initGLTextureNam(gObjTextureNames[STL_BOMBX_TEXTURE_LEFT],
+		"textures/bombx.data", false, true);
+	initGLTextureNam(gObjTextureNames[STL_BOMBX_TEXTURE_RIGHT],
+		"textures/bombx.data", true, true);
+	initGLTextureNam(gObjTextureNames[STL_BOMB_EXPLODING_TEXTURE_1],
+		"textures/bomb-explosion.data", false, true);
+	initGLTextureNam(gObjTextureNames[STL_BOMB_EXPLODING_TEXTURE_2],
+		"textures/bomb-explosion-1.data", false, true);
 		
 	return glGetError() == GL_NO_ERROR;
 }
@@ -1069,7 +1205,8 @@ static void clearScreen() {
 	glClear(GL_COLOR_BUFFER_BIT);
 }
 
-static void reloadLevel() {
+static void reloadLevel(keys *const k) {
+	assert(k);
 	if (gCurrLevel > 5)
 		gCurrLevel = 5;  // hack
 	
@@ -1085,6 +1222,8 @@ static void reloadLevel() {
 	else if (gCurrLevel == 5)
 		file = "gpl/levels/level5.stl";
 	assert(loadLevel(file));
+	
+	gLastDirectionWasRight = true;
 }
 
 static void core(keys *const k) {
@@ -1105,10 +1244,10 @@ static void core(keys *const k) {
 	drawWorldItems();
 	
 	if (player->type == STL_PLAYER_DEAD) {  // reload the current level
-		reloadLevel();
+		reloadLevel(k);
 	} else if (player->type == STL_PLAYER_ASCENDED) {  // reload the next level
 		gCurrLevel++;
-		reloadLevel();
+		reloadLevel(k);
 	}
 }
 

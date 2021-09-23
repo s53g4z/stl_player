@@ -43,6 +43,7 @@ void print_curr_mv_matrix(float params[4][4]) {
 }
 
 char *safe_read(const char *const filename, ssize_t *has_read) {
+	*has_read = 0;  // DO NOT COMMIT! xxx warn error hack
 	int fd = open(filename, O_RDONLY);
 	if (fd < 0)
 		return NULL;
@@ -266,4 +267,9 @@ void printTM(uint8_t **const tm, const int width, const int height) {
 			fprintf(stderr, "%.3d ", tm[h][w]);
 		fprintf(stderr, "\n");
 	}
+}
+
+void must(unsigned long long condition) {
+	if (!condition)
+		exit(1);
 }

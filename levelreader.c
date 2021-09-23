@@ -73,7 +73,7 @@ void stlPrinter(const stl *const lvl) {
 			case STL_NO_MORE_OBJ: str = "STL_NO_MORE_OBJ"; break;
 			case SNOWBALL: str = "SNOWBALL"; break;
 			case MRICEBLOCK: str = "MRICEBLOCK"; break;
-			case MRBOMB: str = "MRBOMB"; break;
+			case STL_BOMB: str = "MRBOMB"; break;
 			case STALACTITE: str = "STALACTITE"; break;
 			case BOUNCINGSNOWBALL: str = "BOUNCINGSNOWBALL"; break;
 			case FLYINGSNOWBALL: str = "FLYINGSNOWBALL"; break;
@@ -287,7 +287,7 @@ stl_obj getSTLobj(const char **section, size_t *const section_len) {
 	} else if (nextWordIs("mriceblock", section, section_len)) {
 		consumeRestOfObj(&obj, MRICEBLOCK, section, section_len);
 	} else if (nextWordIs("mrbomb", section, section_len)) {
-		consumeRestOfObj(&obj, MRBOMB, section, section_len);
+		consumeRestOfObj(&obj, STL_BOMB, section, section_len);
 	} else if (nextWordIs("stalactite", section, section_len)) {
 		consumeRestOfObj(&obj, STALACTITE, section, section_len);
 	} else if (nextWordIs("bouncingsnowball", section, section_len)) {
