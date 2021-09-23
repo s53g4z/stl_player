@@ -42,47 +42,50 @@ void print_curr_mv_matrix(float params[4][4]) {
 	fprintf(stderr, "\n");
 }
 
+// Helper for safe_read.
+char *safe_read_fail(char *buf, ssize_t *has_read) {
+	free(buf);
+	*has_read = 0;
+	return NULL;
+}
+
 char *safe_read(const char *const filename, ssize_t *has_read) {
+	*has_read = 0;
 	int fd = open(filename, O_RDONLY);
 	if (fd < 0)
 		return NULL;
 	
 	char *buf = malloc(1);
 	ssize_t bufsiz = 1;
-	*has_read = 0;
 	for (;;) {
 		if (*has_read > SSIZE_MAX - (ssize_t)buf) {
-			free(buf);
-			return NULL;
+			return safe_read_fail(buf, has_read);
 		}
 		ssize_t got = read(fd, buf + *has_read, bufsiz - *has_read);
 		if (got == 0)  // EOF
 			return buf;
 		if (got < 0) {
-			free(buf);
-			return NULL;
+			return safe_read_fail(buf, has_read);
 		}
 		if (*has_read > SSIZE_MAX - got) {
-			free(buf);
-			return NULL;
+			return safe_read_fail(buf, has_read);
 		}
 		*has_read += got;
 		assert(bufsiz >= *has_read);
 		if (bufsiz == *has_read) {
 			if (bufsiz > SSIZE_MAX / 2) {
-				free(buf);
-				return NULL;
+				return safe_read_fail(buf, has_read);
 			}
 			bufsiz *= 2;
 			char *bigger = realloc(buf, bufsiz);
 			if (!bigger) {
-				free(buf);
-				return NULL;
+				return safe_read_fail(buf, has_read);
 			}
 			buf = bigger;
 		}
 	}
 	
+	assert(0);
 	return NULL;
 }
 
