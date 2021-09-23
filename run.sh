@@ -1,4 +1,4 @@
 #!/bin/sh
 
-./stlplayer;
+./stl_player;
 exit $?;

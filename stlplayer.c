@@ -22,22 +22,27 @@ Player *player;
 const float MRICEBLOCK_KICKSPEED = 8;
 const float PLAYER_BOUNCE_SPEED = -5;
 const float PLAYER_JUMP_SPEED = -10;
-const float PLAYER_RUN_SPEED = 6;
+const float PLAYER_RUN_SPEED = 15;  // 6 xxx
+const float BOUNCINGSNOWBALL_JUMP_SPEED = -15;
 
 static const uint8_t ignored_tiles[] = {
-	6, 7, 8, 9, 25, 76, 85, 86, 87, 88, 89, 90, 91, 92, 126, 133,
+	6, 7, 8, 9, 25, 126, 133,
 };  // todo burndown
 
 static enum gOTNi {
 	STL_DEAD_MRICEBLOCK_TEXTURE_LEFT = 0,
 	STL_DEAD_MRICEBLOCK_TEXTURE_RIGHT,
+	SNOWBALL_TEXTURE_LEFT,
+	SNOWBALL_TEXTURE_RIGHT,
+	BOUNCINGSNOWBALL_TEXTURE_LEFT,
+	BOUNCINGSNOWBALL_TEXTURE_RIGHT,
 	gOTNlen = 64,
 };
 static uint32_t gObjTextureNames[gOTNlen];  // shared across all levels
 
 WorldItem *worldItem_new(enum stl_obj_type type, int x, int y, int wi, int h,
 	float spx, float spy, bool gravity, char *imgnam,
-	void(*frame)(WorldItem *const), bool mirrable, bool patrol) {	
+	void(*frame)(WorldItem *const), bool mirrable, bool patrol, bool hasAlpha) {
 	assert(wi > 0 && h > 0);
 	WorldItem *w = nnmalloc(sizeof(WorldItem));
 	w->type = type;
@@ -55,10 +60,10 @@ WorldItem *worldItem_new(enum stl_obj_type type, int x, int y, int wi, int h,
 	w->texnam2 = 0;
 	if (imgnam) {
 		glGenTextures(1, &w->texnam);
-		initGLTextureNam(w->texnam, imgnam, false);
+		initGLTextureNam(w->texnam, imgnam, false, hasAlpha);
 		if (mirrable) {
 			glGenTextures(1, &w->texnam2);
-			initGLTextureNam(w->texnam2, imgnam, true);
+			initGLTextureNam(w->texnam2, imgnam, true, hasAlpha);
 		}
 	}
 	
@@ -500,14 +505,15 @@ void fnpl(WorldItem *self) {
 			case STALACTITE:
 			case BOUNCINGSNOWBALL:
 			case FLYINGSNOWBALL:
-				self->speedY = PLAYER_BOUNCE_SPEED;
-				if (leftOf(self) - 1 == rightOf(colls[i]) ||
+				if (topOf(self) - 1 == bottomOf(colls[i]) ||
+					leftOf(self) - 1 == rightOf(colls[i]) ||
 					rightOf(self) + 1 == leftOf(colls[i])) {
 					fprintf(stderr, "You died.\n");
 					self->type = STL_PLAYER_DEAD;
-					//exit(0);  // kill self todo
-				} else if (bottomOf(self) + 1 == topOf(colls[i]))
+				} else if (bottomOf(self) + 1 == topOf(colls[i])) {
+					self->speedY = PLAYER_BOUNCE_SPEED;  // bounce off corpse
 					colls[i]->type = STL_DEAD;
+				}
 				break;
 			case STL_BONUS:
 				if (colls[i]->state == 1 &&  // bonus is active
@@ -576,7 +582,7 @@ void maybeTurnAround(WorldItem *const self) {
 	self->x = origX;
 }
 
-// Callback for bot frame. Move the bot around.
+// Callback for bot frame. Move the bot around horizontally.
 void fnbot(WorldItem *const self) {
 	if (self->patrol)
 		maybeTurnAround(self);  // patrol
@@ -598,6 +604,24 @@ void fnsnowball(WorldItem *const self) {
 	fnbot(self);
 }
 
+void fnbouncingsnowball(WorldItem *const self) {
+	if (hitScreenBottom(self)) {
+		self->type = STL_DEAD;
+		return;
+	}
+	fnbot(self);
+	size_t collisions_len;
+	WorldItem **colls = isCollidingWith(self, &collisions_len, GDIRECTION_BOTH);
+	for (size_t i = 0; i < collisions_len; i++) {
+		const WorldItem *const coll = colls[i];
+		if (bottomOf(self) + 1 == topOf(coll)) {  // bounce off surface
+			self->speedY = BOUNCINGSNOWBALL_JUMP_SPEED;
+			break;
+		}
+	}
+	free(colls);
+}
+
 void fniceblock(WorldItem *const self) {
 	if (hitScreenBottom(self)) {
 		self->type = STL_DEAD;
@@ -613,7 +637,8 @@ void fniceblock(WorldItem *const self) {
 		else
 			self->speedX = MRICEBLOCK_KICKSPEED;
 		size_t collisions_len;
-		WorldItem **colls = isCollidingWith(self, &collisions_len, GDIRECTION_BOTH);
+		WorldItem **colls = isCollidingWith(self, &collisions_len,
+			GDIRECTION_BOTH);
 		for (size_t i = 0; i < collisions_len; i++) {
 			switch (colls[i]->type) {
 				case STL_BRICK:
@@ -662,8 +687,24 @@ void must(unsigned long long condition) {
 		exit(1);
 }
 
+// Mirror a 64 * 64 * 4 array of {char r, g, b, a}.
+void mirrorTexelImgAlpha(void *imgmem) {
+	struct texel {
+		char r, g, b, a;
+	};
+	struct texel *img = (struct texel *)imgmem;
+	for (int height = 0; height < 64; height++)
+		for (int width = 0; width < 32; width++) {
+			struct texel tmp = img[height * 64 + width];
+			img[height * 64 + width] = img[height * 64 + 64 - width - 1];
+			img[height * 64 + 64 - width - 1] = tmp;
+		}
+}
+
 // Mirror a 64 * 64 * 3 array of {char r, g, b}.
-void mirrorTexelImg(void *imgmem) {
+void mirrorTexelImg(void *imgmem, bool hasAlpha) {
+	if (hasAlpha)
+		return mirrorTexelImgAlpha(imgmem);  // copy-paste of this fn, but w/ alpha support 
 	struct texel {
 		char r, g, b;
 	};
@@ -679,12 +720,13 @@ void mirrorTexelImg(void *imgmem) {
 // Upload the file specified by imgnam to the texture specified by texnam to
 // make texnam usable by the GL.
 void initGLTextureNam(const uint32_t texnam, const char *const imgnam,
-	bool mirror) {
+	bool mirror, bool hasAlpha) {
 	ssize_t has_read;
 	char *imgmem = safe_read(imgnam, &has_read);
-	assert(has_read == 64 * 64 * 3);
+	assert((!hasAlpha && has_read == 64 * 64 * 3) ||
+		(hasAlpha && has_read == 64 * 64 * 4));
 	if (mirror) {  // flip-flop the image
-		mirrorTexelImg(imgmem);
+		mirrorTexelImg(imgmem, hasAlpha);
 	}
 	// Do NOT switch the active texture unit!
 	// See https://web.archive.org/web/20210905013830/https://users.cs.jmu.edu/b
@@ -695,14 +737,17 @@ void initGLTextureNam(const uint32_t texnam, const char *const imgnam,
 	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
 	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+	int imgformat = GL_RGB;
+	if (hasAlpha)
+		imgformat = GL_RGBA;
 	glTexImage2D(
 		GL_TEXTURE_2D,
 		0,
-		GL_RGB,
+		imgformat,
 		64,
 		64,
 		0,
-		GL_RGB,
+		imgformat,
 		GL_UNSIGNED_BYTE,
 		imgmem
 	);
@@ -720,49 +765,49 @@ static void maybeInitgTextureNames() {
 	assert(glGetError() == GL_NO_ERROR);
 	
 	// todo: connect the rest of the valid texturename indexes to files
-	initGLTextureNam(gTextureNames[10], "textures/snow4.data", false);
-	initGLTextureNam(gTextureNames[11], "textures/snow5.data", false);
-	initGLTextureNam(gTextureNames[12], "textures/snow6.data", false);
-	initGLTextureNam(gTextureNames[13], "textures/snow7.data", false);
-	initGLTextureNam(gTextureNames[14], "textures/snow8.data", false);
-	initGLTextureNam(gTextureNames[15], "textures/snow9.data", false);
-	initGLTextureNam(gTextureNames[16], "textures/snow11.data", false);
+	initGLTextureNam(gTextureNames[10], "textures/snow4.data", false, false);
+	initGLTextureNam(gTextureNames[11], "textures/snow5.data", false, false);
+	initGLTextureNam(gTextureNames[12], "textures/snow6.data", false, false);
+	initGLTextureNam(gTextureNames[13], "textures/snow7.data", false, false);
+	initGLTextureNam(gTextureNames[14], "textures/snow8.data", false, false);
+	initGLTextureNam(gTextureNames[15], "textures/snow9.data", false, false);
+	initGLTextureNam(gTextureNames[16], "textures/snow11.data", false, false);
 	gTextureNames[17] = gTextureNames[16];
 	gTextureNames[18] = gTextureNames[16];
-	initGLTextureNam(gTextureNames[19], "textures/snow13.data", false);
-	initGLTextureNam(gTextureNames[20], "textures/snow14.data", false);
-	initGLTextureNam(gTextureNames[21], "textures/snow15.data", false);
-	initGLTextureNam(gTextureNames[22], "textures/snow16.data", false);
-	initGLTextureNam(gTextureNames[23], "textures/snow17.data", false);
-	initGLTextureNam(gTextureNames[25], "textures/background8.data", false);
-	initGLTextureNam(gTextureNames[26], "textures/bonus2.data", false);
-	initGLTextureNam(gTextureNames[27], "textures/block1.data", false);
-	initGLTextureNam(gTextureNames[28], "textures/block2.data", false);
-	initGLTextureNam(gTextureNames[29], "textures/block3.data", false);
-	initGLTextureNam(gTextureNames[30], "textures/snow18.data", false);
-	initGLTextureNam(gTextureNames[31], "textures/snow19.data", false);
-	initGLTextureNam(gTextureNames[44], "textures/coin1.data", false);
-	initGLTextureNam(gTextureNames[47], "textures/block4.data", false);
-	initGLTextureNam(gTextureNames[48], "textures/block5.data", false);
-	initGLTextureNam(gTextureNames[76], "textures/waves-1.data", false);
-	initGLTextureNam(gTextureNames[77], "textures/brick0.data", false);
-	initGLTextureNam(gTextureNames[78], "textures/brick1.data", false);
+	initGLTextureNam(gTextureNames[19], "textures/snow13.data", false, false);
+	initGLTextureNam(gTextureNames[20], "textures/snow14.data", false, false);
+	initGLTextureNam(gTextureNames[21], "textures/snow15.data", false, false);
+	initGLTextureNam(gTextureNames[22], "textures/snow16.data", false, false);
+	initGLTextureNam(gTextureNames[23], "textures/snow17.data", false, false);
+	initGLTextureNam(gTextureNames[25], "textures/background8.data", false, false);
+	initGLTextureNam(gTextureNames[26], "textures/bonus2.data", false, false);
+	initGLTextureNam(gTextureNames[27], "textures/block1.data", false, false);
+	initGLTextureNam(gTextureNames[28], "textures/block2.data", false, false);
+	initGLTextureNam(gTextureNames[29], "textures/block3.data", false, false);
+	initGLTextureNam(gTextureNames[30], "textures/snow18.data", false, false);
+	initGLTextureNam(gTextureNames[31], "textures/snow19.data", false, false);
+	initGLTextureNam(gTextureNames[44], "textures/coin1.data", false, false);
+	initGLTextureNam(gTextureNames[47], "textures/block4.data", false, false);
+	initGLTextureNam(gTextureNames[48], "textures/block5.data", false, false);
+	initGLTextureNam(gTextureNames[76], "textures/waves-1.data", false, true);
+	initGLTextureNam(gTextureNames[77], "textures/brick0.data", false, false);
+	initGLTextureNam(gTextureNames[78], "textures/brick1.data", false, false);
 	gTextureNames[83] = gTextureNames[26];
-	initGLTextureNam(gTextureNames[84], "textures/bonus2-d.data", false);
-	initGLTextureNam(gTextureNames[85], "textures/cloud-00.data", false);
-	initGLTextureNam(gTextureNames[86], "textures/cloud-01.data", false);
-	initGLTextureNam(gTextureNames[87], "textures/cloud-02.data", false);
-	initGLTextureNam(gTextureNames[88], "textures/cloud-03.data", false);
-	initGLTextureNam(gTextureNames[89], "textures/cloud-10.data", false);
-	initGLTextureNam(gTextureNames[90], "textures/cloud-11.data", false);
-	initGLTextureNam(gTextureNames[91], "textures/cloud-12.data", false);
-	initGLTextureNam(gTextureNames[92], "textures/cloud-13.data", false);
+	initGLTextureNam(gTextureNames[84], "textures/bonus2-d.data", false, false);
+	initGLTextureNam(gTextureNames[85], "textures/Acloud-00.data", false, true);
+	initGLTextureNam(gTextureNames[86], "textures/Acloud-01.data", false, true);
+	initGLTextureNam(gTextureNames[87], "textures/Acloud-02.data", false, true);
+	initGLTextureNam(gTextureNames[88], "textures/Acloud-03.data", false, true);
+	initGLTextureNam(gTextureNames[89], "textures/Acloud-10.data", false, true);
+	initGLTextureNam(gTextureNames[90], "textures/Acloud-11.data", false, true);
+	initGLTextureNam(gTextureNames[91], "textures/Acloud-12.data", false, true);
+	initGLTextureNam(gTextureNames[92], "textures/Acloud-13.data", false, true);
 	gTextureNames[102] = gTextureNames[26];  // drawn as bonus2 but does nothing
 	gTextureNames[103] = gTextureNames[26];
 	gTextureNames[104] = gTextureNames[77];
 	gTextureNames[105] = gTextureNames[78];
-	initGLTextureNam(gTextureNames[113], "textures/snow20.data", false);
-	initGLTextureNam(gTextureNames[114], "textures/snow21.data", false);
+	initGLTextureNam(gTextureNames[113], "textures/snow20.data", false, false);
+	initGLTextureNam(gTextureNames[114], "textures/snow21.data", false, false);
 	gTextureNames[128] = gTextureNames[26];
 	
 	assert(glGetError() == GL_NO_ERROR);
@@ -807,7 +852,7 @@ const WorldItem *worldItem_new_block(enum stl_obj_type type, int x, int y) {
 		assert(width == 30 && height == 30);
 	}
 	WorldItem *const w = worldItem_new(type, x, y, width, height,
-		0, 0, false, NULL, fnret, false, false);
+		0, 0, false, NULL, fnret, false, false, false);
 	if (type == STL_BONUS)
 		w->state = 1;
 	return w;
@@ -852,7 +897,10 @@ static void load_lvl_interactives() {
 				pushto_worldItems(worldItem_new_block(STL_WIN, x, y));
 			else if (tileID == 44)
 				pushto_worldItems(worldItem_new_block(STL_COIN, x, y));
-			else if (tileID > 0 &&
+			else if ((tileID >= 85 && tileID <= 92) || tileID == 76) {
+				// for some reason, cloud tiles show up in interactive-tm
+				// 76 is a wave (water wave)
+			} else if (tileID > 0 &&
 				!bsearch(&tileID, ignored_tiles,
 					sizeof(ignored_tiles)/sizeof(uint8_t), sizeof(uint8_t),
 					cmpForUint8_t))
@@ -868,11 +916,19 @@ static void load_lvl_objects() {
 		if (obj->type == SNOWBALL) {
 			w = worldItem_new(SNOWBALL, obj->x, obj->y - 1,
 				TILE_WIDTH, TILE_HEIGHT, -3, 1, true,
-				"textures/snowball.data", fnsnowball, true, true);
+				NULL, fnsnowball, true, true, false);
+			w->texnam = gObjTextureNames[SNOWBALL_TEXTURE_LEFT];
+			w->texnam2 = gObjTextureNames[SNOWBALL_TEXTURE_RIGHT];
 		} else if (obj->type == MRICEBLOCK) {
 			w = worldItem_new(MRICEBLOCK, obj->x, obj->y - 1,
 				TILE_WIDTH, TILE_HEIGHT, -3, 1, true,
-				"textures/mriceblock.data", fniceblock, true, true);
+				"textures/mriceblock.data", fniceblock, true, true, false);
+		} else if (obj->type == BOUNCINGSNOWBALL) {
+			w = worldItem_new(BOUNCINGSNOWBALL, obj->x, obj->y - 1,
+				TILE_WIDTH, TILE_HEIGHT, -3, 1, true,
+				NULL, fnbouncingsnowball, true, false, false);
+			w->texnam = gObjTextureNames[BOUNCINGSNOWBALL_TEXTURE_LEFT];
+			w->texnam2 = gObjTextureNames[BOUNCINGSNOWBALL_TEXTURE_RIGHT];
 		} else
 			continue;
 		pushto_worldItems(w);
@@ -897,7 +953,7 @@ static bool loadLevel(const char *const level_filename) {
 	stlPrinter(&lvl);
 	pushto_worldItems(worldItem_new(STL_PLAYER, lvl.start_pos_x,
 		lvl.start_pos_y, 30, 30, PLAYER_RUN_SPEED, 1, true,
-		"textures/texture3.rgb", fnpl, false, false));
+		"textures/texture3.rgb", fnpl, false, false, false));
 	player = worldItems[0];
 	load_lvl_objects();
 	load_lvl_interactives();
@@ -910,9 +966,17 @@ bool populateGOTN() {
 	glGenTextures(gOTNlen, gObjTextureNames);
 	
 	initGLTextureNam(gObjTextureNames[STL_DEAD_MRICEBLOCK_TEXTURE_LEFT],
-		"textures/mriceblock-flat-left.data", false);
+		"textures/mriceblock-flat-left.data", false, false);
 	initGLTextureNam(gObjTextureNames[STL_DEAD_MRICEBLOCK_TEXTURE_RIGHT],
-		"textures/mriceblock-flat-left.data", true);
+		"textures/mriceblock-flat-left.data", true, false);
+	initGLTextureNam(gObjTextureNames[SNOWBALL_TEXTURE_LEFT],
+		"textures/Asnowball.data", false, true);
+	initGLTextureNam(gObjTextureNames[SNOWBALL_TEXTURE_RIGHT],
+		"textures/Asnowball.data", true, true);
+	initGLTextureNam(gObjTextureNames[BOUNCINGSNOWBALL_TEXTURE_LEFT],
+		"textures/Abouncingsnowball.data", false, true);
+	initGLTextureNam(gObjTextureNames[BOUNCINGSNOWBALL_TEXTURE_RIGHT],
+		"textures/Abouncingsnowball.data", true, true);
 		
 	return glGetError() == GL_NO_ERROR;
 }
