@@ -43,9 +43,10 @@ void print_curr_mv_matrix(float params[4][4]) {
 }
 
 // Helper for safe_read.
-char *safe_read_fail(char *buf, ssize_t *has_read) {
+char *safe_read_fail(char *buf, ssize_t *has_read, int fd) {
 	free(buf);
 	*has_read = 0;
+	assert(close(fd) == 0);
 	return NULL;
 }
 
@@ -60,27 +61,29 @@ char *safe_read(const char *const filename, ssize_t *has_read) {
 	ssize_t bufsiz = 1;
 	for (;;) {
 		if (*has_read > SSIZE_MAX - (ssize_t)buf) {
-			return safe_read_fail(buf, has_read);
+			return safe_read_fail(buf, has_read, fd);
 		}
 		ssize_t got = read(fd, buf + *has_read, bufsiz - *has_read);
-		if (got == 0)  // EOF
+		if (got == 0) {  // EOF
+			assert(close(fd) == 0);
 			return buf;
+		}
 		if (got < 0) {
-			return safe_read_fail(buf, has_read);
+			return safe_read_fail(buf, has_read, fd);
 		}
 		if (*has_read > SSIZE_MAX - got) {
-			return safe_read_fail(buf, has_read);
+			return safe_read_fail(buf, has_read, fd);
 		}
 		*has_read += got;
 		assert(bufsiz >= *has_read);
 		if (bufsiz == *has_read) {
 			if (bufsiz > SSIZE_MAX / 2) {
-				return safe_read_fail(buf, has_read);
+				return safe_read_fail(buf, has_read, fd);
 			}
 			bufsiz *= 2;
 			char *bigger = realloc(buf, bufsiz);
 			if (!bigger) {
-				return safe_read_fail(buf, has_read);
+				return safe_read_fail(buf, has_read, fd);
 			}
 			buf = bigger;
 		}

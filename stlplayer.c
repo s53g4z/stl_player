@@ -666,6 +666,34 @@ static void fnbouncingsnowball(WorldItem *const self) {
 	free(colls);
 }
 
+void iceDestroyObstacles(WorldItem *const self) {
+	assert(self->type == STL_KICKED_MRICEBLOCK);
+	size_t collisions_len;
+	WorldItem **colls = isCollidingWith(self, &collisions_len,
+		GDIRECTION_BOTH);
+	for (size_t i = 0; i < collisions_len; i++) {
+		switch (colls[i]->type) {
+			case STL_BRICK:
+				colls[i]->type = STL_BRICK_DESTROYED;  // break the block
+				break;
+			case STL_DEAD_MRICEBLOCK:
+			case SNOWBALL:
+			case MRICEBLOCK:
+			case STL_BOMB:
+			case STALACTITE:
+			case BOUNCINGSNOWBALL:
+			case FLYINGSNOWBALL:
+				colls[i]->type = STL_DEAD;  // kill that one
+				break;
+			case STL_KICKED_MRICEBLOCK:  // kill both
+				self->type = STL_DEAD;  // die self for real
+				colls[i]->type = STL_DEAD;  // kill the colls[i]
+				break;
+		}
+	}
+	free(colls);
+}
+
 void fniceblock(WorldItem *const self) {
 	if (hitScreenBottom(self)) {
 		self->type = STL_DEAD;
@@ -680,33 +708,23 @@ void fniceblock(WorldItem *const self) {
 			self->speedX = -MRICEBLOCK_KICKSPEED;
 		else
 			self->speedX = MRICEBLOCK_KICKSPEED;
-		size_t collisions_len;
-		WorldItem **colls = isCollidingWith(self, &collisions_len,
-			GDIRECTION_BOTH);
-		for (size_t i = 0; i < collisions_len; i++) {
-			switch (colls[i]->type) {
-				case STL_BRICK:
-					colls[i]->type = STL_BRICK_DESTROYED;  // break the block
-					//turnAround(self);  // bounce off the broken block
-					break;
-				case STL_DEAD_MRICEBLOCK:
-				case SNOWBALL:
-				case MRICEBLOCK:
-				case STL_BOMB:
-				case STALACTITE:
-				case BOUNCINGSNOWBALL:
-				case FLYINGSNOWBALL:
-					colls[i]->type = STL_DEAD;  // kill that one
-					break;
-				case STL_KICKED_MRICEBLOCK:  // kill both
-					self->type = STL_DEAD;  // die self for real
-					colls[i]->type = STL_DEAD;  // kill the colls[i]
-					break;
+		
+		int origSpeedX = self->speedX;
+		do {
+			iceDestroyObstacles(self);
+			if (self->type == STL_DEAD)
+				break;  // the dead don't move no more
+			int moveX = canMoveTo(self, GDIRECTION_HORIZ);
+			if (moveX == 0) {
+				turnAround(self);  // in shame
+				return;  // lost cause
 			}
-		}
-		free(colls);
-	}
-	fnbot(self);
+			self->x += moveX;
+			self->speedX -= moveX;
+		} while (0 != self->speedX);
+		self->speedX = origSpeedX;  // do it all over again at the next frame
+	} else
+		fnbot(self);
 }
 
 // Set self type to exploding, and reset the framesElapsed counter.
@@ -1184,8 +1202,8 @@ static void initialize() {
 	initialize_prgm();
 	
 	assert(populateGOTN());
-	assert(loadLevel("gpl/levels/level6.stl"));  // xxx
-	gCurrLevel = 6;  // hack for debugging xxx
+	assert(loadLevel("gpl/levels/level1.stl"));  // xxx
+	gCurrLevel = 1;  // hack for debugging xxx
 }
 
 // Return true if w is off-screen.
