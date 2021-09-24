@@ -1,6 +1,8 @@
 
 # SuperTux v0.1.3 Level Player
 
+<img src="screencaps/stl_player_build_b9e4972.png" height="320">
+
 ## Introduction
 
 The goal of the SuperTux v0.1.3 Level Player project is to produce an unofficial standalone Linux program that can read and play preexisting SuperTux v0.1.3 level files. This player is currently under heavy development.
