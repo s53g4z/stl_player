@@ -923,6 +923,12 @@ static void maybeInitgTextureNames() {
 	initGLTextureNam(gTextureNames[44], "textures/coin1.data", false, true);
 	initGLTextureNam(gTextureNames[47], "textures/block4.data", false, false);
 	initGLTextureNam(gTextureNames[48], "textures/block5.data", false, false);
+	
+	initGLTextureNam(gTextureNames[57], "textures/pipe5.data", false, true);
+	initGLTextureNam(gTextureNames[58], "textures/pipe6.data", false, true);
+	initGLTextureNam(gTextureNames[59], "textures/pipe7.data", false, true);
+	initGLTextureNam(gTextureNames[60], "textures/pipe8.data", false, true);
+	
 	initGLTextureNam(gTextureNames[76], "textures/waves-1.data", false, true);
 	initGLTextureNam(gTextureNames[77], "textures/brick0.data", false, false);
 	initGLTextureNam(gTextureNames[78], "textures/brick1.data", false, false);
@@ -1029,7 +1035,7 @@ static void loadLevelInteractives() {
 			int y = h * TILE_HEIGHT;  // ibid
 			const uint8_t blocks[] = {  // tileIDs for solid tiles
 				10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 25,
-				27, 28, 29, 30, 31, 47, 48, 84, 102, 103, 105, 113, 114,
+				27, 28, 29, 30, 31, 47, 48, 57, 58, 59, 60, 84, 102, 103, 105, 113, 114,
 				124, 125, 128,
 			};
 			if (bsearch(&tileID, blocks, sizeof(blocks)/sizeof(uint8_t), 
