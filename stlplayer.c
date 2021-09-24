@@ -24,6 +24,7 @@ const float PLAYER_BOUNCE_SPEED = -5;
 const float PLAYER_JUMP_SPEED = -9;
 const float PLAYER_RUN_SPEED = 8;
 const float BOUNCINGSNOWBALL_JUMP_SPEED = -10;
+const float FLYINGSNOWBALL_HOVER_SPEED = -2;
 
 static const uint8_t ignored_tiles[] = {
 	6, 126, 133,
@@ -44,6 +45,8 @@ static enum gOTNi {
 	STL_BOMB_EXPLODING_TEXTURE_2,
 	STL_SPIKY_TEXTURE_LEFT,
 	STL_SPIKY_TEXTURE_RIGHT,
+	STL_FLYINGSNOWBALL_TEXTURE_LEFT,
+	STL_FLYINGSNOWBALL_TEXTURE_RIGHT,
 	gOTNlen = 64,
 };
 static uint32_t gObjTextureNames[gOTNlen];  // shared across all levels
@@ -563,8 +566,8 @@ void fnpl(WorldItem *self) {
 					lvl.interactivetm[y - 1][x] = 44;
 					pushto_worldItems(worldItem_new_block(
 						STL_COIN,
-						colls[i]->x + 1,
-						colls[i]->y - TILE_HEIGHT + 1
+						colls[i]->x,
+						colls[i]->y - TILE_HEIGHT
 					));  // hairy!
 				}
 				break;
@@ -637,8 +640,6 @@ void fnbot(WorldItem *const self) {
 	}
 	self->x += moveX;
 }
-
-static enum WorldItemState { ALIVE, DEAD };
 
 static void fnsnowball(WorldItem *const self) {
 	if (hitScreenBottom(self)) {
@@ -816,6 +817,20 @@ static void fnbomb(WorldItem *const self) {
 
 static void fnspiky(WorldItem *const self) {
 	fnbot(self);
+}
+
+static void fnflyingsnowball(WorldItem *const self) {
+	static int totalDistMoved = 0;
+	
+	int moveY = canMoveTo(self, GDIRECTION_VERT);
+	if (moveY == 0 || totalDistMoved >= 4 * TILE_HEIGHT) {
+		assert(self->speedY != INT_MIN);
+		self->speedY *= -1;  // for next time
+		totalDistMoved = 0;
+	} else {
+		self->y += moveY;
+		totalDistMoved += abs(moveY);
+	}
 }
 
 // Push a WorldItem onto worldItems. (auto-inits and grows the array)
@@ -1015,7 +1030,7 @@ static void paintTile(uint8_t tileID, int x, int y) {
 // Handy convenience function to make a new block. x and y are screen coords.
 static const WorldItem *worldItem_new_block(enum stl_obj_type type, int x, int y) {
 	int width = TILE_WIDTH, height = TILE_HEIGHT;
-	if (type == SNOWBALL || type == MRICEBLOCK || type == STL_COIN) {
+	if (type == SNOWBALL || type == MRICEBLOCK) {
 		width -= 2;  // slightly smaller hitbox
 		height -= 2;  // ibid
 		assert(width == 30 && height == 30);
@@ -1124,14 +1139,20 @@ static void loadLevelObjects() {
 			w->texnam = gObjTextureNames[STL_SPIKY_TEXTURE_LEFT];
 			w->texnam2 = gObjTextureNames[STL_SPIKY_TEXTURE_RIGHT];
 		} else if (obj->type == MONEY) {
-			// 	initGLTextureNam(gTextureNames[44], "textures/coin1.data", false, true);
-
 			w = worldItem_new(MONEY, obj->x, obj->y - 1,
 				TILE_WIDTH, TILE_HEIGHT, 0, 0, false, NULL, fndummy, false,
 				false, false);
 			w->texnam = gTextureNames[44];
-		} else
+		} else if (obj->type == FLYINGSNOWBALL) {
+			w = worldItem_new(FLYINGSNOWBALL, obj->x, obj ->y - 1,
+				TILE_WIDTH, TILE_HEIGHT, 0, FLYINGSNOWBALL_HOVER_SPEED, false,
+				NULL, fnflyingsnowball, false, false, false);
+			w->texnam = gObjTextureNames[STL_FLYINGSNOWBALL_TEXTURE_LEFT];
+			w->texnam = gObjTextureNames[STL_FLYINGSNOWBALL_TEXTURE_RIGHT];
+		} else {
+			fprintf(stderr, "WARN: skipping the load of an obj!\n");
 			continue;
+		}
 		pushto_worldItems(w);
 	}
 }
@@ -1194,6 +1215,11 @@ bool populateGOTN() {
 		"textures/spiky.data", false, true);
 	initGLTextureNam(gObjTextureNames[STL_SPIKY_TEXTURE_RIGHT],
 		"textures/spiky.data", true, true);
+	
+	initGLTextureNam(gObjTextureNames[STL_FLYINGSNOWBALL_TEXTURE_LEFT],
+		"textures/flyingsnowball.data", false, true);
+	initGLTextureNam(gObjTextureNames[STL_FLYINGSNOWBALL_TEXTURE_RIGHT],
+		"textures/flyingsnowball.data", true, true);
 		
 	return glGetError() == GL_NO_ERROR;
 }
