@@ -42,6 +42,8 @@ static enum gOTNi {
 	STL_BOMBX_TEXTURE_RIGHT,
 	STL_BOMB_EXPLODING_TEXTURE_1,
 	STL_BOMB_EXPLODING_TEXTURE_2,
+	STL_SPIKY_TEXTURE_LEFT,
+	STL_SPIKY_TEXTURE_RIGHT,
 	gOTNlen = 64,
 };
 static uint32_t gObjTextureNames[gOTNlen];  // shared across all levels
@@ -480,6 +482,10 @@ void fnpl(WorldItem *self) {
 		int x = (colls[i]->x + gScrollOffset) / TILE_WIDTH;
 		int y = colls[i]->y / TILE_HEIGHT;
 		switch (colls[i]->type) {
+			case SPIKY:
+				fprintf(stderr, "You died.\n");
+				self->type = STL_PLAYER_DEAD;
+				break;
 			case MRICEBLOCK:
 				self->speedY = PLAYER_BOUNCE_SPEED;
 				if (bottomOf(self) + 1 == topOf(colls[i])) {
@@ -569,6 +575,9 @@ void fnpl(WorldItem *self) {
 				colls[i]->type = STL_DEAD;
 				//assert(lvl.interactivetm[y][x] == 44 || false);
 				lvl.interactivetm[y][x] = 0;
+				break;
+			case MONEY:
+				colls[i]->type = STL_DEAD;
 				break;
 			case STL_WIN:
 				fprintf(stderr, "You win!\n");
@@ -759,7 +768,7 @@ static void fnbomb(WorldItem *const self) {
 		return;
 	}
 	
-	if (self->type == STL_BOMB_TICKING && framesElapsed >= 128) {
+	if (self->type == STL_BOMB_TICKING && framesElapsed >= 120) {
 		bombExplodes(self, &framesElapsed);
 	}
 	
@@ -785,6 +794,10 @@ static void fnbomb(WorldItem *const self) {
 	}
 	else
 		fnbot(self);
+}
+
+static void fnspiky(WorldItem *const self) {
+	fnbot(self);
 }
 
 // Push a WorldItem onto worldItems. (auto-inits and grows the array)
@@ -1006,7 +1019,7 @@ void paintTM(uint8_t **tm) {
 }
 
 // Helper for loadLevel.
-static void load_lvl_interactives() {
+static void loadLevelInteractives() {
 	// Load in the interactives all at once, one time.
 	// (Painting for interactives happens elsewhere, repeatedly.)
 	for (int h = 0; h < lvl.height; h++)
@@ -1048,8 +1061,13 @@ static void load_lvl_interactives() {
 		}
 }
 
+void fndummy(WorldItem *const self) {
+	assert(self);
+	// do nothing
+}
+
 // Helper for loadLevel.
-static void load_lvl_objects() {
+static void loadLevelObjects() {
 	for (size_t i = 0; i < lvl.objects_len; i++) {
 		WorldItem *w = NULL;
 		stl_obj *obj = &lvl.objects[i];
@@ -1075,6 +1093,19 @@ static void load_lvl_objects() {
 				true);
 			w->texnam = gObjTextureNames[STL_BOMB_TEXTURE_LEFT];
 			w->texnam2 = gObjTextureNames[STL_BOMB_TEXTURE_RIGHT];
+		} else if (obj->type == SPIKY) {
+			w = worldItem_new(SPIKY, obj->x, obj->y - 1,
+				TILE_WIDTH, TILE_HEIGHT, -3, 1, true, NULL, fnspiky, true, true,
+				true);
+			w->texnam = gObjTextureNames[STL_SPIKY_TEXTURE_LEFT];
+			w->texnam2 = gObjTextureNames[STL_SPIKY_TEXTURE_RIGHT];
+		} else if (obj->type == MONEY) {
+			// 	initGLTextureNam(gTextureNames[44], "textures/coin1.data", false, true);
+
+			w = worldItem_new(MONEY, obj->x, obj->y - 1,
+				TILE_WIDTH, TILE_HEIGHT, 0, 0, false, NULL, fndummy, false,
+				false, false);
+			w->texnam = gTextureNames[44];
 		} else
 			continue;
 		pushto_worldItems(w);
@@ -1101,8 +1132,8 @@ static bool loadLevel(const char *const level_filename) {
 		lvl.start_pos_y, 30, 30, PLAYER_RUN_SPEED, 1, true,
 		"textures/tux.data", fnpl, true, false, true));
 	player = worldItems[0];
-	load_lvl_objects();
-	load_lvl_interactives();
+	loadLevelObjects();
+	loadLevelInteractives();
 	
 	return true;
 }
@@ -1123,7 +1154,6 @@ bool populateGOTN() {
 		"textures/Abouncingsnowball.data", false, true);
 	initGLTextureNam(gObjTextureNames[STL_BOUNCINGSNOWBALL_TEXTURE_RIGHT],
 		"textures/Abouncingsnowball.data", true, true);
-		
 	initGLTextureNam(gObjTextureNames[STL_BOMB_TEXTURE_LEFT],
 		"textures/bomb.data", false, true);
 	initGLTextureNam(gObjTextureNames[STL_BOMB_TEXTURE_RIGHT],
@@ -1136,6 +1166,10 @@ bool populateGOTN() {
 		"textures/bomb-explosion.data", false, true);
 	initGLTextureNam(gObjTextureNames[STL_BOMB_EXPLODING_TEXTURE_2],
 		"textures/bomb-explosion-1.data", false, true);
+	initGLTextureNam(gObjTextureNames[STL_SPIKY_TEXTURE_LEFT],
+		"textures/spiky.data", false, true);
+	initGLTextureNam(gObjTextureNames[STL_SPIKY_TEXTURE_RIGHT],
+		"textures/spiky.data", true, true);
 		
 	return glGetError() == GL_NO_ERROR;
 }
@@ -1144,8 +1178,8 @@ static void initialize() {
 	initialize_prgm();
 	
 	assert(populateGOTN());
-	assert(loadLevel("gpl/levels/level1.stl"));  // xxx
-	gCurrLevel = 1;  // hack for debugging xxx
+	assert(loadLevel("gpl/levels/level6.stl"));  // xxx
+	gCurrLevel = 6;  // hack for debugging xxx
 }
 
 // Return true if w is off-screen.
@@ -1207,8 +1241,8 @@ static void clearScreen() {
 
 static void reloadLevel(keys *const k) {
 	assert(k);
-	if (gCurrLevel > 5)
-		gCurrLevel = 5;  // hack
+	if (gCurrLevel > 6)
+		gCurrLevel = 6;  // hack
 	
 	const char *file = NULL;
 	if (gCurrLevel == 1)  // todo: make some string malloc()'ing behavior here
@@ -1221,9 +1255,11 @@ static void reloadLevel(keys *const k) {
 		file = "gpl/levels/level4.stl";
 	else if (gCurrLevel == 5)
 		file = "gpl/levels/level5.stl";
+	else if (gCurrLevel == 6)
+		file = "gpl/levels/level6.stl";
 	assert(loadLevel(file));
 	
-	gLastDirectionWasRight = true;
+	gLastDirectionWasRight = true;  // player starts facing right
 }
 
 static void core(keys *const k) {

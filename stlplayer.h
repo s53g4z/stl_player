@@ -29,7 +29,8 @@ enum stl_obj_type {
 	STALACTITE,
 	BOUNCINGSNOWBALL,
 	FLYINGSNOWBALL,
-	MONEY
+	MONEY,
+	SPIKY,
 };
 
 struct WorldItem {

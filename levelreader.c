@@ -78,6 +78,7 @@ void stlPrinter(const stl *const lvl) {
 			case BOUNCINGSNOWBALL: str = "BOUNCINGSNOWBALL"; break;
 			case FLYINGSNOWBALL: str = "FLYINGSNOWBALL"; break;
 			case MONEY: str = "MONEY"; break;
+			case SPIKY: str = "SPIKY"; break;
 		}
 		fprintf(stderr, "\t%s at %d, %d\n", str, lvl->objects[i].x,
 			lvl->objects[i].y);
@@ -296,6 +297,8 @@ stl_obj getSTLobj(const char **section, size_t *const section_len) {
 		consumeRestOfObj(&obj, FLYINGSNOWBALL, section, section_len);
 	} else if (nextWordIs("money", section, section_len)) {
 		consumeRestOfObj(&obj, MONEY, section, section_len);
+	} else if (nextWordIs("spiky", section, section_len)) {
+		consumeRestOfObj(&obj, SPIKY, section, section_len);
 	}
 	return obj;
 }
