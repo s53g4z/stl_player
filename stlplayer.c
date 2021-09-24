@@ -47,6 +47,7 @@ static enum gOTNi {
 	STL_SPIKY_TEXTURE_RIGHT,
 	STL_FLYINGSNOWBALL_TEXTURE_LEFT,
 	STL_FLYINGSNOWBALL_TEXTURE_RIGHT,
+	STL_STALACTITE_TEXTURE,
 	gOTNlen = 64,
 };
 static uint32_t gObjTextureNames[gOTNlen];  // shared across all levels
@@ -532,10 +533,15 @@ void fnpl(WorldItem *self) {
 					self->type = STL_PLAYER_DEAD;
 				}
 				break;
+			case STALACTITE:
+				if (topOf(self) - 1 == bottomOf(colls[i])) {
+					fprintf(stderr, "You died.\n");
+					self->type = STL_PLAYER_DEAD;
+				}
+				break;
 			case SNOWBALL:
 			case STL_BOMB:
 			case STL_BOMB_TICKING:
-			case STALACTITE:
 			case BOUNCINGSNOWBALL:
 			case FLYINGSNOWBALL:
 				if (topOf(self) - 1 == bottomOf(colls[i]) ||
@@ -547,9 +553,10 @@ void fnpl(WorldItem *self) {
 					self->speedY = PLAYER_BOUNCE_SPEED;  // bounce off corpse
 					if (colls[i]->type == STL_BOMB) {
 						colls[i]->type = STL_BOMB_TICKING;
-						colls[i]->speedX = fabs(colls[i]->speedX);
-						colls[i]->texnam = gObjTextureNames[STL_BOMBX_TEXTURE_RIGHT];
-						colls[i]->texnam2 = gObjTextureNames[STL_BOMBX_TEXTURE_LEFT];
+						assert(colls[i]->speedX != INT_MIN);
+						colls[i]->speedX = -fabs(colls[i]->speedX);
+						colls[i]->texnam = gObjTextureNames[STL_BOMBX_TEXTURE_LEFT];
+						colls[i]->texnam2 = gObjTextureNames[STL_BOMBX_TEXTURE_RIGHT];
 						colls[i]->patrol = false;
 					} else if (colls[i]->type != STL_BOMB_TICKING)
 						colls[i]->type = STL_DEAD;
@@ -767,9 +774,9 @@ static void bombHandleExplosionCollisions(WorldItem *const self) {
 				break;
 			case STL_BOMB:
 				coll->type = STL_BOMB_TICKING;
-				coll->speedX = fabs(coll->speedX);
-				coll->texnam = gObjTextureNames[STL_BOMBX_TEXTURE_RIGHT];
-				coll->texnam2 = gObjTextureNames[STL_BOMBX_TEXTURE_LEFT];
+				coll->speedX = -fabs(coll->speedX);
+				coll->texnam = gObjTextureNames[STL_BOMBX_TEXTURE_LEFT];
+				coll->texnam2 = gObjTextureNames[STL_BOMBX_TEXTURE_RIGHT];
 				coll->patrol = false;
 				break;
 			case STL_BONUS:
@@ -831,6 +838,20 @@ static void fnflyingsnowball(WorldItem *const self) {
 		self->y += moveY;
 		totalDistMoved += abs(moveY);
 	}
+}
+
+static void fnstalactite(WorldItem *const self) {
+	int playerCenterX = player->x + player->width / 2;
+	int selfCenterX = self->x + self->width / 2;
+	if (abs(selfCenterX - playerCenterX) > 3 * TILE_WIDTH)
+		return;
+	
+	static int framesWaited = 0;
+	assert(framesWaited >= 0 && framesWaited <= 30);
+	if (framesWaited == 30)
+		self->gravity = true;
+	else
+		framesWaited++;
 }
 
 // Push a WorldItem onto worldItems. (auto-inits and grows the array)
@@ -1144,11 +1165,16 @@ static void loadLevelObjects() {
 				false, false);
 			w->texnam = gTextureNames[44];
 		} else if (obj->type == FLYINGSNOWBALL) {
-			w = worldItem_new(FLYINGSNOWBALL, obj->x, obj ->y - 1,
+			w = worldItem_new(FLYINGSNOWBALL, obj->x, obj->y - 1,
 				TILE_WIDTH, TILE_HEIGHT, 0, FLYINGSNOWBALL_HOVER_SPEED, false,
 				NULL, fnflyingsnowball, false, false, false);
 			w->texnam = gObjTextureNames[STL_FLYINGSNOWBALL_TEXTURE_LEFT];
 			w->texnam = gObjTextureNames[STL_FLYINGSNOWBALL_TEXTURE_RIGHT];
+		} else if (obj->type == STALACTITE) {
+			w = worldItem_new(STALACTITE, obj->x, obj->y - 1,
+				TILE_WIDTH, TILE_HEIGHT, 0, 2, false, NULL, fnstalactite, false,
+				false, false);
+			w->texnam = gObjTextureNames[STL_STALACTITE_TEXTURE];
 		} else {
 			fprintf(stderr, "WARN: skipping the load of an obj!\n");
 			continue;
@@ -1215,11 +1241,12 @@ bool populateGOTN() {
 		"textures/spiky.data", false, true);
 	initGLTextureNam(gObjTextureNames[STL_SPIKY_TEXTURE_RIGHT],
 		"textures/spiky.data", true, true);
-	
 	initGLTextureNam(gObjTextureNames[STL_FLYINGSNOWBALL_TEXTURE_LEFT],
 		"textures/flyingsnowball.data", false, true);
 	initGLTextureNam(gObjTextureNames[STL_FLYINGSNOWBALL_TEXTURE_RIGHT],
 		"textures/flyingsnowball.data", true, true);
+	initGLTextureNam(gObjTextureNames[STL_STALACTITE_TEXTURE],
+		"textures/stalactite.data", false, true);
 		
 	return glGetError() == GL_NO_ERROR;
 }
