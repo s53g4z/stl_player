@@ -682,7 +682,8 @@ void iceDestroyObstacles(WorldItem *const self) {
 	for (size_t i = 0; i < collisions_len; i++) {
 		switch (colls[i]->type) {
 			case STL_BRICK:
-				colls[i]->type = STL_BRICK_DESTROYED;  // break the block
+				if (bottomOf(self) + 1 != topOf(colls[i]))
+					colls[i]->type = STL_BRICK_DESTROYED;  // break the brick
 				break;
 			case STL_DEAD_MRICEBLOCK:
 			case SNOWBALL:
@@ -790,8 +791,7 @@ static void fnbomb(WorldItem *const self) {
 	static int framesElapsed = 0;
 	
 	if (hitScreenBottom(self)) {
-		self->type = STL_DEAD;
-		return;
+		self->type = STL_BOMB_EXPLODING;
 	}
 	
 	if (self->type == STL_BOMB_TICKING && framesElapsed >= 120) {
@@ -843,7 +843,7 @@ static void fnflyingsnowball(WorldItem *const self) {
 static void fnstalactite(WorldItem *const self) {
 	int playerCenterX = player->x + player->width / 2;
 	int selfCenterX = self->x + self->width / 2;
-	if (abs(selfCenterX - playerCenterX) > 3 * TILE_WIDTH)
+	if (abs(selfCenterX - playerCenterX) > 4 * TILE_WIDTH)
 		return;
 	
 	static int framesWaited = 0;
