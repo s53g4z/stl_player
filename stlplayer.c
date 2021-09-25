@@ -891,7 +891,7 @@ static void pushto_worldItems(const WorldItem *const v) {
 	worldItems[worldItems_len++] = w;
 }
 
-static uint32_t gTextureNames[256];
+static uint32_t gTextureNames[257];  // 0-256, plus 1 for the background image
 
 // Mirror a 64 * 64 * 4 array of {char r, g, b, a}.
 void mirrorTexelImgAlpha(void *imgmem) {
@@ -967,7 +967,7 @@ static void maybeInitgTextureNames() {
 		return;
 	ran = true;
 	
-	glGenTextures(256, gTextureNames);
+	glGenTextures(257, gTextureNames);
 	assert(glGetError() == GL_NO_ERROR);
 	
 	// todo: connect the rest of the valid texturename indexes to files
@@ -1058,7 +1058,6 @@ static void paintTile(uint8_t tileID, int x, int y) {
 	if (tileID == 0 || bsearch(&tileID, ignored_tiles,
 		sizeof(ignored_tiles)/sizeof(uint8_t), sizeof(uint8_t), cmpForUint8_t))
 		return;
-	maybeInitgTextureNames();
 	
 	const float vertices[] = {
 		x			, y,				1.0,
@@ -1273,12 +1272,57 @@ bool populateGOTN() {
 	return glGetError() == GL_NO_ERROR;
 }
 
+bool loadLevelBackground() {
+	char *filename = lvl.background;
+	
+	// investigate taking off the filename extension
+	if (strlen(filename) > 4 &&
+		0 == strcmp(".jpg", filename + strlen(filename) - 4)) {
+		filename = nnrealloc(filename, strlen(filename) + 1 + 1);  // ".data\0"
+		strcpy(filename + strlen(filename) - 4, ".data");
+		lvl.background = filename;
+	}
+	
+	size_t path_len = strlen("textures/") + strlen(filename) + 1;
+	char *path = nnmalloc(path_len);
+	strcpy(path, "textures/");
+	strcat(path, filename);
+	//path[path_len - 1] = '\0';
+	
+	ssize_t imgdat_len;
+	char *imgdat = safe_read(path, &imgdat_len);
+	free(path);
+	assert(imgdat_len == 640 * 480 * 4);
+	glBindTexture(GL_TEXTURE_2D, gTextureNames[256]);
+	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+	glTexImage2D(
+		GL_TEXTURE_2D,
+		0,
+		GL_RGBA,
+		640,
+		480,
+		0,
+		GL_RGBA,
+		GL_UNSIGNED_BYTE,
+		imgdat
+	);
+	free(imgdat);
+	
+	return glGetError() == GL_NO_ERROR;
+}
+
 static void initialize() {
 	initialize_prgm();
+	maybeInitgTextureNames();
 	
 	assert(populateGOTN());
 	assert(loadLevel("gpl/levels/level1.stl"));  // xxx
 	gCurrLevel = 1;  // hack for debugging xxx
+	
+	assert(loadLevelBackground());
 }
 
 // Return true if w is off-screen.
@@ -1333,9 +1377,29 @@ static void drawWorldItems() {
 	}
 }
 
+static void drawLevelBackground() {
+	float backgroundVertices[] = {
+		0 - gScrollOffset % SCREEN_WIDTH,				0,				1.0,
+		0 - gScrollOffset % SCREEN_WIDTH,				SCREEN_HEIGHT,	1.0,
+		SCREEN_WIDTH - gScrollOffset % SCREEN_WIDTH,	0,				1.0,
+		SCREEN_WIDTH - gScrollOffset % SCREEN_WIDTH,	SCREEN_HEIGHT,	1.0,
+	};
+	drawGLvertices(backgroundVertices, gTextureNames[256]);
+	
+	// if the previous draw doesn't cover the entire screen ...
+	if (gScrollOffset % SCREEN_WIDTH != 0) {
+		backgroundVertices[0] = SCREEN_WIDTH - gScrollOffset % SCREEN_WIDTH;
+		backgroundVertices[3] = SCREEN_WIDTH - gScrollOffset % SCREEN_WIDTH;
+		backgroundVertices[6] = 2 * SCREEN_WIDTH - gScrollOffset % SCREEN_WIDTH;
+		backgroundVertices[9] = 2 * SCREEN_WIDTH - gScrollOffset % SCREEN_WIDTH;
+		drawGLvertices(backgroundVertices, gTextureNames[256]);
+	}
+}
+
 static void clearScreen() {
 	glClearColor(30.0/255, 85.0/255, 150.0/255, 1);  // light blue
 	glClear(GL_COLOR_BUFFER_BIT);
+	drawLevelBackground();
 }
 
 static void reloadLevel(keys *const k) {
