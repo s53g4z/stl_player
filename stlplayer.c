@@ -21,7 +21,7 @@ Player *player;
 
 const float MRICEBLOCK_KICKSPEED = 9;
 const float PLAYER_BOUNCE_SPEED = -5;
-const float PLAYER_JUMP_SPEED = -9;
+const float PLAYER_JUMP_SPEED = -11;
 const float PLAYER_RUN_SPEED = 8;
 const float BOUNCINGSNOWBALL_JUMP_SPEED = -10;
 const float FLYINGSNOWBALL_HOVER_SPEED = -2;
@@ -328,19 +328,33 @@ void wiSwapTextures(WorldItem *const w) {
 	w->texnam2 = tmp;
 }
 
-bool gLastDirectionWasRight = true;
+static bool gLastDirectionWasRight = true;
+
+static bool playerIsStandingOnSomething() {
+	size_t colls_len;
+	WorldItem **colls = isCollidingWith(player, &colls_len,
+		GDIRECTION_VERT);
+	for (size_t i = 0; i < colls_len; i++) {
+		if (bottomOf(player) + 1 == topOf(colls[i])) {
+			free(colls);
+			return true;
+		}
+	}
+	free(colls);
+	return false;
+}
 
 static void processInput(const keys *const k) {
 	assert(k && SCREEN_WIDTH && SCREEN_HEIGHT);
 	
-	if (k->keyD) {
+	if (k->keyD || k->keyRight) {
 		player->speedX = fabs(player->speedX);
 		player->x += canMoveTo(player, GDIRECTION_HORIZ);
 		if (!gLastDirectionWasRight)
 			wiSwapTextures(player);
 		gLastDirectionWasRight = true;
 	}
-	if (k->keyA) {
+	if (k->keyA || k->keyLeft) {
 		assert(player->speedX != INT_MIN);
 		if (player->speedX > 0)
 			player->speedX *= -1;
@@ -349,8 +363,9 @@ static void processInput(const keys *const k) {
 			wiSwapTextures(player);
 		gLastDirectionWasRight = false;
 	}
-	if (k->keyW)
+	if ((k->keyW || k->keyUp) && playerIsStandingOnSomething()) {
 		player->speedY = PLAYER_JUMP_SPEED;
+	}
 	if (k->keyR)
 		player_toggle_size();
 	
@@ -491,7 +506,8 @@ void fnpl(WorldItem *self) {
 				self->type = STL_PLAYER_DEAD;
 				break;
 			case MRICEBLOCK:
-				self->speedY = PLAYER_BOUNCE_SPEED;
+				if (self->speedY >= 0)
+					self->speedY = PLAYER_BOUNCE_SPEED;
 				if (bottomOf(self) + 1 == topOf(colls[i])) {
 					// todo have a fixed set of texnams to index into
 					colls[i]->type = STL_DEAD_MRICEBLOCK;
@@ -511,7 +527,8 @@ void fnpl(WorldItem *self) {
 				}
 				break;
 			case STL_DEAD_MRICEBLOCK:  // just sitting there
-				self->speedY = PLAYER_BOUNCE_SPEED;
+				if (self->speedY >= 0)
+					self->speedY = PLAYER_BOUNCE_SPEED;
 				colls[i]->type = STL_KICKED_MRICEBLOCK;
 				if (self->x <= colls[i]->x) {  // player is left of the iceblock
 					if (colls[i]->speedX < 0)
@@ -524,7 +541,8 @@ void fnpl(WorldItem *self) {
 				}
 				break;
 			case STL_KICKED_MRICEBLOCK:
-				self->speedY = PLAYER_BOUNCE_SPEED;
+				if (self->speedY >= 0)
+					self->speedY = PLAYER_BOUNCE_SPEED;
 				if (bottomOf(self) + 1 == topOf(colls[i]))
 					colls[i]->type = STL_DEAD_MRICEBLOCK;
 				else if (leftOf(self) - 1 == rightOf(colls[i]) ||
@@ -550,7 +568,8 @@ void fnpl(WorldItem *self) {
 					fprintf(stderr, "You died.\n");
 					self->type = STL_PLAYER_DEAD;
 				} else if (bottomOf(self) + 1 == topOf(colls[i])) {
-					self->speedY = PLAYER_BOUNCE_SPEED;  // bounce off corpse
+					if (self->speedY >= 0)
+						self->speedY = PLAYER_BOUNCE_SPEED;  // bounce off corpse
 					if (colls[i]->type == STL_BOMB) {
 						colls[i]->type = STL_BOMB_TICKING;
 						assert(colls[i]->speedX != INT_MIN);
@@ -579,8 +598,11 @@ void fnpl(WorldItem *self) {
 				}
 				break;
 			case STL_BRICK:
-				if (false || topOf(self) - 1 != bottomOf(colls[i]))
-					break;  // else fall thru, assign dead, rm from lvl.i..TM
+				if (topOf(self) - 1 != bottomOf(colls[i]) || (
+					!isBetween(rightOf(self), leftOf(colls[i]),
+					rightOf(colls[i])) && !isBetween(leftOf(self),
+					leftOf(colls[i]), rightOf(colls[i]))))
+					break;
 			case STL_COIN:
 				colls[i]->type = STL_DEAD;
 				//assert(lvl.interactivetm[y][x] == 44 || false);
