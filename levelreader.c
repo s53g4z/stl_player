@@ -234,12 +234,6 @@ bool scanForObjComponent(stl_obj *const obj, const char *x_or_y,
 		obj->type = STL_INVALID_OBJ;
 		return false;
 	}
-	if (n < 0)
-		n = 0;
-	if (*x_or_y == 'x')
-		obj->x = n;
-	else if (*x_or_y == 'y')
-		obj->y = n;
 	int nAsStrLen = intAsStrLen(n);
 	*section += nAsStrLen;
 	*section_len -= nAsStrLen;
@@ -248,6 +242,12 @@ bool scanForObjComponent(stl_obj *const obj, const char *x_or_y,
 		obj->type = STL_INVALID_OBJ;
 		return false;
 	}
+	if (n < 0)
+		n = 0;
+	if (*x_or_y == 'x')
+		obj->x = n;
+	else if (*x_or_y == 'y')
+		obj->y = n;
 	return true;
 }
 

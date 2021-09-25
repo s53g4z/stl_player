@@ -331,6 +331,7 @@ void wiSwapTextures(WorldItem *const w) {
 static bool gLastDirectionWasRight = true;
 
 static bool playerIsStandingOnSomething() {
+	//return true;  // debug debugging hack b/c passing levels is hard '>,>
 	size_t colls_len;
 	WorldItem **colls = isCollidingWith(player, &colls_len,
 		GDIRECTION_VERT);
@@ -346,6 +347,7 @@ static bool playerIsStandingOnSomething() {
 
 static void processInput(const keys *const k) {
 	assert(k && SCREEN_WIDTH && SCREEN_HEIGHT);
+	static bool hasJumped = false;
 	
 	if (k->keyD || k->keyRight) {
 		player->speedX = fabs(player->speedX);
@@ -363,8 +365,12 @@ static void processInput(const keys *const k) {
 			wiSwapTextures(player);
 		gLastDirectionWasRight = false;
 	}
-	if ((k->keyW || k->keyUp) && playerIsStandingOnSomething()) {
+	if (!k->keyW && !k->keyUp && !k->keySpace)  // reset on all keys up
+		hasJumped = false;
+	if (!hasJumped &&
+		(k->keyW || k->keyUp || k->keySpace) && playerIsStandingOnSomething()) {
 		player->speedY = PLAYER_JUMP_SPEED;
+		hasJumped = true;
 	}
 	if (k->keyR)
 		player_toggle_size();
@@ -997,6 +1003,10 @@ static void maybeInitgTextureNames() {
 	initGLTextureNam(gTextureNames[30], "textures/snow18.data", false, false);
 	initGLTextureNam(gTextureNames[31], "textures/snow19.data", false, false);
 	initGLTextureNam(gTextureNames[44], "textures/coin1.data", false, true);
+	
+	gTextureNames[45] = gTextureNames[44];
+	gTextureNames[46] = gTextureNames[44];
+	
 	initGLTextureNam(gTextureNames[47], "textures/block4.data", false, false);
 	initGLTextureNam(gTextureNames[48], "textures/block5.data", false, false);
 	
@@ -1004,6 +1014,7 @@ static void maybeInitgTextureNames() {
 	initGLTextureNam(gTextureNames[58], "textures/pipe6.data", false, true);
 	initGLTextureNam(gTextureNames[59], "textures/pipe7.data", false, true);
 	initGLTextureNam(gTextureNames[60], "textures/pipe8.data", false, true);
+	initGLTextureNam(gTextureNames[61], "textures/block10.data", false, true);
 	
 	initGLTextureNam(gTextureNames[76], "textures/waves-1.data", false, true);
 	initGLTextureNam(gTextureNames[77], "textures/brick0.data", false, false);
@@ -1110,7 +1121,7 @@ static void loadLevelInteractives() {
 			int y = h * TILE_HEIGHT;  // ibid
 			const uint8_t blocks[] = {  // tileIDs for solid tiles
 				10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 25,
-				27, 28, 29, 30, 31, 47, 48, 57, 58, 59, 60, 84, 102, 103, 105, 113, 114,
+				27, 28, 29, 30, 31, 47, 48, 57, 58, 59, 60, 61, 84, 102, 103, 105, 113, 114,
 				124, 125, 128,
 			};
 			if (bsearch(&tileID, blocks, sizeof(blocks)/sizeof(uint8_t), 
@@ -1122,7 +1133,7 @@ static void loadLevelInteractives() {
 				pushto_worldItems(worldItem_new_block(STL_BRICK, x, y));
 			else if (tileID == 132)
 				pushto_worldItems(worldItem_new_block(STL_WIN, x, y));
-			else if (tileID == 44)
+			else if (tileID == 44 || tileID == 45 || tileID == 46)
 				pushto_worldItems(worldItem_new_block(STL_COIN, x, y));
 			else if ((tileID >= 85 && tileID <= 92) || tileID == 76 ||
 				(tileID >= 7 && tileID <= 9) || tileID == 24 || tileID == 25 ||
@@ -1319,8 +1330,8 @@ static void initialize() {
 	maybeInitgTextureNames();
 	
 	assert(populateGOTN());
-	assert(loadLevel("gpl/levels/level1.stl"));  // xxx
-	gCurrLevel = 1;  // hack for debugging xxx
+	assert(loadLevel("gpl/levels/level7.stl"));  // xxx
+	gCurrLevel = 7;  // hack for debugging xxx
 	
 	assert(loadLevelBackground());
 }
@@ -1404,8 +1415,8 @@ static void clearScreen() {
 
 static void reloadLevel(keys *const k) {
 	assert(k);
-	if (gCurrLevel > 6)
-		gCurrLevel = 6;  // hack
+	if (gCurrLevel > 7)
+		gCurrLevel = 7;  // hack
 	
 	const char *file = NULL;
 	if (gCurrLevel == 1)  // todo: make some string malloc()'ing behavior here
@@ -1420,6 +1431,8 @@ static void reloadLevel(keys *const k) {
 		file = "gpl/levels/level5.stl";
 	else if (gCurrLevel == 6)
 		file = "gpl/levels/level6.stl";
+	else if (gCurrLevel == 7)
+		file = "gpl/levels/level7.stl";
 	assert(loadLevel(file));
 	
 	gLastDirectionWasRight = true;  // player starts facing right

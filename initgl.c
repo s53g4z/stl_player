@@ -216,6 +216,8 @@ void updateKeys(const XEvent *const e, keys *const k) {
 		k->keyE = keyState;
 	} else if (keyCode == 28) {
 		k->keyT = keyState;
+	} else if (keyCode == 65) {
+		k->keySpace = keyState;
 	} else
 		fprintf(stdout, "Key %d %s\n", keyCode,
 			keyState ? "KeyPress" : "KeyRelease");

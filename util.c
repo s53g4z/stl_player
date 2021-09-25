@@ -251,19 +251,25 @@ void pushto_lvl_objects(stl *const lvl, stl_obj *obj) {
 	(lvl->objects)[lvl->objects_len++] = *obj;
 }
 
-// Return the length of n written out as an ASCII string. Works on 0<n<=99999
+// Return the length of n written out as an ASCII string. Works on |n|<=99999
 int intAsStrLen(int n) {
-	assert(n > 0 && n <= 99999);
+	//assert(n >= 0 && n <= 99999);
+	int maybeDash = 0;
+	if (n < 0)
+		maybeDash = 1;
+	assert(n != INT_MIN && abs(n) <= 99999);
+	n = abs(n);
+	
 	if (n > 9999)
-		return 5;
+		return 5 + maybeDash;
 	else if (n > 999)
-		return 4;
+		return 4 + maybeDash;
 	else if (n > 99)
-		return 3;
+		return 3 + maybeDash;
 	else if (n > 9)
-		return 2;
+		return 2 + maybeDash;
 	else
-		return 1;
+		return 1 + maybeDash;
 }
 
 // Debugging function. Print a TM to stderr.
