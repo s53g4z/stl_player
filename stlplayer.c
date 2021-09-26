@@ -19,11 +19,11 @@ static stl lvl;
 
 Player *player;
 
-const float MRICEBLOCK_KICKSPEED = 9;
-const float PLAYER_BOUNCE_SPEED = -5;
-const float PLAYER_JUMP_SPEED = -11;
-const float PLAYER_RUN_SPEED = 8;
-const float BOUNCINGSNOWBALL_JUMP_SPEED = -10;
+const float MRICEBLOCK_KICKSPEED = 10;
+const float PLAYER_BOUNCE_SPEED = -10;
+const float PLAYER_JUMP_SPEED = -10;
+const float PLAYER_RUN_SPEED = 7;
+const float BOUNCINGSNOWBALL_JUMP_SPEED = -9;
 const float FLYINGSNOWBALL_HOVER_SPEED = -2;
 
 static const uint8_t ignored_tiles[] = {
@@ -330,50 +330,109 @@ void wiSwapTextures(WorldItem *const w) {
 
 static bool gLastDirectionWasRight = true;
 
-static bool playerIsStandingOnSomething() {
-	//return true;  // debug debugging hack b/c passing levels is hard '>,>
-	size_t colls_len;
-	WorldItem **colls = isCollidingWith(player, &colls_len,
-		GDIRECTION_VERT);
+bool playerLandedOnSurface(WorldItem **const colls,
+	const size_t colls_len) {
 	for (size_t i = 0; i < colls_len; i++) {
-		if (bottomOf(player) + 1 == topOf(colls[i])) {
-			free(colls);
-			return true;
+		const WorldItem *const coll = colls[i];
+		switch (coll->type) {
+			case STL_BRICK:
+			case STL_BLOCK:
+			case STALACTITE:
+			case STL_BONUS:
+				return true;
 		}
 	}
-	free(colls);
+	return false;
+}
+
+bool playerLandedOnBadguy(WorldItem **const colls,
+	const size_t colls_len) {
+	for (size_t i = 0; i < colls_len; i++) {
+		const WorldItem *const coll = colls[i];
+		if (bottomOf(player) + 1 != topOf(coll))
+			continue;
+		switch (coll->type) {
+			case SNOWBALL:
+			case MRICEBLOCK:
+			case STL_BOMB:
+			case STL_BOMB_TICKING:
+			case STL_DEAD_MRICEBLOCK:
+			case STL_KICKED_MRICEBLOCK:
+			case BOUNCINGSNOWBALL:
+			case FLYINGSNOWBALL:
+				return true;
+		}
+	}
 	return false;
 }
 
 static void processInput(const keys *const k) {
 	assert(k && SCREEN_WIDTH && SCREEN_HEIGHT);
-	static bool hasJumped = false;
 	
 	if (k->keyD || k->keyRight) {
-		player->speedX = fabs(player->speedX);
+		if (player->speedX <= 0)
+			player->speedX = 0.33;
+		else
+			player->speedX *= 2;
+		if (player->speedX > fabs(PLAYER_RUN_SPEED))
+			player->speedX = fabs(PLAYER_RUN_SPEED);
+		//player->speedX = fabs(player->speedX);
+		
 		player->x += canMoveTo(player, GDIRECTION_HORIZ);
 		if (!gLastDirectionWasRight)
 			wiSwapTextures(player);
 		gLastDirectionWasRight = true;
 	}
 	if (k->keyA || k->keyLeft) {
-		assert(player->speedX != INT_MIN);
-		if (player->speedX > 0)
-			player->speedX *= -1;
+		if (player->speedX >= 0)
+			player->speedX = -0.33;
+		else
+			player->speedX *= 2;
+		assert(PLAYER_RUN_SPEED != INT_MIN);
+		if (player->speedX < -fabs(PLAYER_RUN_SPEED))
+			player->speedX = -fabs(PLAYER_RUN_SPEED);
+		
 		player->x += canMoveTo(player, GDIRECTION_HORIZ);
 		if (gLastDirectionWasRight)
 			wiSwapTextures(player);
 		gLastDirectionWasRight = false;
 	}
-	if (!k->keyW && !k->keyUp && !k->keySpace)  // reset on all keys up
-		hasJumped = false;
-	if (!hasJumped &&
-		(k->keyW || k->keyUp || k->keySpace) && playerIsStandingOnSomething()) {
-		player->speedY = PLAYER_JUMP_SPEED;
-		hasJumped = true;
+	if (!k->keyD && !k->keyRight && !k->keyA && !k->keyLeft) {  // slow down
+		player->speedX *= 0.66;
+		if (fabs(player->speedX) < 0.1)
+			player->speedX = 0;
+		player->x += canMoveTo(player, GDIRECTION_HORIZ);
 	}
-	if (k->keyR)
-		player_toggle_size();
+	
+	static bool jumped = true;
+	size_t colls_len;
+	WorldItem **const colls = isCollidingWith(player, &colls_len,
+		GDIRECTION_BOTH);
+	bool onBadguy = playerLandedOnBadguy(colls, colls_len);
+	bool onSurface = playerLandedOnSurface(colls, colls_len);
+	// reset on all keys up
+	if (!k->keyW && !k->keyUp && !k->keySpace) {
+		if (player->speedY < 0)
+			player->speedY /= 2;
+		if (onSurface)
+			jumped = false;
+	}
+	if (onBadguy)
+		jumped = false;
+	if (k->keyW || k->keyUp || k->keySpace) {
+		if (!jumped && (onBadguy || onSurface)) {
+			player->speedY = PLAYER_JUMP_SPEED;
+			//player->y += canMoveTo(player, GDIRECTION_VERT);
+			jumped = true;
+		}
+	}
+	free(colls);
+	
+	// 0 means not carrying, 1 means could carry, 2 means carrying something
+	if (k->keyCTRL && player->state == 0) {
+		player->state = 1;
+	} else if (!k->keyCTRL)
+		player->state = 0;
 	
 	// debugging
 	if (k->keyE) {
@@ -413,7 +472,7 @@ static void applyGravity() {
 		if (moveY == 0)
 			w->speedY = 1;
 		else {
-			w->speedY += 0.5;
+			w->speedY += 0.333;
 			//w->speedY *= 2;
 			w->y += moveY;
 		}
@@ -495,6 +554,29 @@ bool hitScreenBottom(const WorldItem *const self) {
 	return self->y + self->height + 1 >= SCREEN_HEIGHT;
 }
 
+// The player kicks the icecube.
+void playerKicks(WorldItem *coll) {
+	assert(coll->type == STL_DEAD_MRICEBLOCK);
+	coll->type = STL_KICKED_MRICEBLOCK;
+	coll->gravity = true;
+	
+	if (player->speedY >= 0 && bottomOf(player) + 1 == topOf(coll))
+		player->speedY = PLAYER_BOUNCE_SPEED;  // bounce off top of icecube
+	
+	// player is left of the iceblock
+	if (player->x + player->width / 2 < coll->x + coll->width / 2) {
+		coll->x = player->x + player->width;
+		if (coll->speedX < 0)
+			wiSwapTextures(coll);
+		coll->speedX = MRICEBLOCK_KICKSPEED;  // iceblock goes right
+	} else {  // player is right of the iceblock
+		coll->x = player->x - coll->width;  // not a typo
+		if (coll->speedX > 0)
+			wiSwapTextures(coll);
+		coll->speedX = -MRICEBLOCK_KICKSPEED;  // iceblock goes left
+	}
+}
+
 // Callback for player frame.
 void fnpl(WorldItem *self) {
 	if (hitScreenBottom(self)) {
@@ -533,17 +615,17 @@ void fnpl(WorldItem *self) {
 				}
 				break;
 			case STL_DEAD_MRICEBLOCK:  // just sitting there
-				if (self->speedY >= 0)
-					self->speedY = PLAYER_BOUNCE_SPEED;
-				colls[i]->type = STL_KICKED_MRICEBLOCK;
-				if (self->x <= colls[i]->x) {  // player is left of the iceblock
-					if (colls[i]->speedX < 0)
-						wiSwapTextures(colls[i]);
-					colls[i]->speedX = MRICEBLOCK_KICKSPEED;  // iceblock goes right
-				} else {  // player is right of the iceblock
-					if (colls[i]->speedX > 0)
-						wiSwapTextures(colls[i]);
-					colls[i]->speedX = -MRICEBLOCK_KICKSPEED;  // iceblock goes left
+				if (self->state == 0) {
+					colls[i]->gravity = true;
+					playerKicks(colls[i]);
+				} else if (self->state == 1) {
+					colls[i]->gravity = false;
+					if (self->speedX > 0)  // player is going right
+						colls[i]->x = self->x + self->width / 2;
+					else if (self->speedX < 0)  // player is going left
+						colls[i]->x = self->x - self->width / 2;
+					colls[i]->y = self->y - 5;  // arbitrary
+					//self->state = 2;
 				}
 				break;
 			case STL_KICKED_MRICEBLOCK:
@@ -1158,6 +1240,8 @@ void fndummy(WorldItem *const self) {
 	// do nothing
 }
 
+float BADGUY_X_SPEED = -2;
+
 // Helper for loadLevel.
 static void loadLevelObjects() {
 	for (size_t i = 0; i < lvl.objects_len; i++) {
@@ -1165,29 +1249,29 @@ static void loadLevelObjects() {
 		stl_obj *obj = &lvl.objects[i];
 		if (obj->type == SNOWBALL) {
 			w = worldItem_new(SNOWBALL, obj->x, obj->y - 1,
-				TILE_WIDTH, TILE_HEIGHT, -3, 1, true,
+				TILE_WIDTH, TILE_HEIGHT, BADGUY_X_SPEED, 1, true,
 				NULL, fnsnowball, true, true, false);
 			w->texnam = gObjTextureNames[STL_SNOWBALL_TEXTURE_LEFT];
 			w->texnam2 = gObjTextureNames[STL_SNOWBALL_TEXTURE_RIGHT];
 		} else if (obj->type == MRICEBLOCK) {
 			w = worldItem_new(MRICEBLOCK, obj->x, obj->y - 1,
-				TILE_WIDTH, TILE_HEIGHT, -3, 1, true,
+				TILE_WIDTH, TILE_HEIGHT, BADGUY_X_SPEED, 1, true,
 				"textures/mriceblock.data", fniceblock, true, true, false);
 		} else if (obj->type == BOUNCINGSNOWBALL) {
 			w = worldItem_new(BOUNCINGSNOWBALL, obj->x, obj->y - 1,
-				TILE_WIDTH, TILE_HEIGHT, -3, 1, true,
+				TILE_WIDTH, TILE_HEIGHT, BADGUY_X_SPEED, 1, true,
 				NULL, fnbouncingsnowball, true, false, false);
 			w->texnam = gObjTextureNames[STL_BOUNCINGSNOWBALL_TEXTURE_LEFT];
 			w->texnam2 = gObjTextureNames[STL_BOUNCINGSNOWBALL_TEXTURE_RIGHT];
 		} else if (obj->type == STL_BOMB) {
 			w = worldItem_new(STL_BOMB, obj->x, obj->y - 1,
-				TILE_WIDTH, TILE_HEIGHT, -3, 1, true, NULL, fnbomb, true, true,
+				TILE_WIDTH, TILE_HEIGHT, BADGUY_X_SPEED, 1, true, NULL, fnbomb, true, true,
 				true);
 			w->texnam = gObjTextureNames[STL_BOMB_TEXTURE_LEFT];
 			w->texnam2 = gObjTextureNames[STL_BOMB_TEXTURE_RIGHT];
 		} else if (obj->type == SPIKY) {
 			w = worldItem_new(SPIKY, obj->x, obj->y - 1,
-				TILE_WIDTH, TILE_HEIGHT, -3, 1, true, NULL, fnspiky, true, true,
+				TILE_WIDTH, TILE_HEIGHT, BADGUY_X_SPEED, 1, true, NULL, fnspiky, true, true,
 				true);
 			w->texnam = gObjTextureNames[STL_SPIKY_TEXTURE_LEFT];
 			w->texnam2 = gObjTextureNames[STL_SPIKY_TEXTURE_RIGHT];
@@ -1330,8 +1414,8 @@ static void initialize() {
 	maybeInitgTextureNames();
 	
 	assert(populateGOTN());
-	assert(loadLevel("gpl/levels/level7.stl"));  // xxx
-	gCurrLevel = 7;  // hack for debugging xxx
+	assert(loadLevel("gpl/levels/level1.stl"));  // xxx
+	gCurrLevel = 1;  // hack for debugging xxx
 	
 	assert(loadLevelBackground());
 }

@@ -36,7 +36,7 @@ struct keys {
 	bool keyLeftBracket, keyRightBracket;
 	bool keyLeft, keyRight, keyUp, keyDown;
 	bool keyT;
-	bool keySpace;
+	bool keySpace, keyCTRL;
 };
 typedef struct keys keys;
 

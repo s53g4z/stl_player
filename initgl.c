@@ -218,6 +218,8 @@ void updateKeys(const XEvent *const e, keys *const k) {
 		k->keyT = keyState;
 	} else if (keyCode == 65) {
 		k->keySpace = keyState;
+	} else if (keyCode == 37) {
+		k->keyCTRL = keyState;
 	} else
 		fprintf(stdout, "Key %d %s\n", keyCode,
 			keyState ? "KeyPress" : "KeyRelease");
