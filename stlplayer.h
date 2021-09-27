@@ -12,6 +12,7 @@ enum stl_obj_type {
 	STL_BONUS,
 	STL_BRICK,
 	STL_BRICK_DESTROYED,
+	STL_INVISIBLE,
 	STL_COIN,
 	STL_PLAYER,
 	STL_PLAYER_DEAD,
@@ -53,6 +54,12 @@ struct stl_obj {
 };
 typedef struct stl_obj stl_obj;
 
+struct point {
+	int x, y;
+	struct point *next;
+};
+typedef struct point point;
+
 struct level {
 	bool hdr;
 	int version;
@@ -66,21 +73,14 @@ struct level {
 	uint8_t **interactivetm, **backgroundtm, **foregroundtm;
 	stl_obj *objects;  // array of struct stl_obj
 	size_t objects_len, objects_cap;
+	point *reset_points;
 };
 typedef struct level stl;
 
 void *nnmalloc(size_t sz);
 void *nnrealloc(void *, size_t);
-WorldItem *worldItem_new(enum stl_obj_type, int, int, int, int, float, float, bool, char *,
-	void (*)(WorldItem *const), bool, bool, bool);
-int leftOf(const WorldItem *const);
-int rightOf(const WorldItem *const);
-int topOf(const WorldItem *const);
-int bottomOf(const WorldItem *const);
 
 // debug
-void initGLTextureNam(const uint32_t texnam, const char *const imgnam,
-	bool mirror, bool hasAlpha);
 stl_obj getSTLobj(const char **section, size_t *const section_len);
 void init_lvl_objects(stl *const lvl);
 void pushto_lvl_objects(stl *const lvl, stl_obj *obj);

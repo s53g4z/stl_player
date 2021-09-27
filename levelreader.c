@@ -3,6 +3,8 @@
 #include "stlplayer.h"
 #include "util.h"
 
+static point *getSTLrp(const char **section, size_t *const section_len);
+
 static const char *nextSectionFrom(const char *ptr, const char *const end, 
 	size_t *const sect_len) {
 	*sect_len = 0;
@@ -198,6 +200,19 @@ stl levelReader(const char *const filename) {
 						return lrFailCleanup(level_orig, &lvl);
 					pushto_lvl_objects(&lvl, &obj);
 				}
+			} else if (nextWordIs("reset-points", &section, &section_len)) {
+				point *latest = lvl.reset_points;
+				for (;;) {
+					point *rp = getSTLrp(&section, &section_len);
+					if (!rp)
+						break;
+					if (!latest)
+						lvl.reset_points = latest = rp;
+					else {
+						latest->next = rp;
+						latest = latest->next;
+					}
+				}
 			}
 		}
 		
@@ -211,7 +226,7 @@ stl levelReader(const char *const filename) {
 
 // Parse past a '(' in search of an stl_obj. Return true on success, else marks
 // the object as invalid and returns false.
-bool parse_paren(stl_obj *const obj,
+static bool parse_paren(stl_obj *const obj,
 	const char **section, size_t *const section_len) {
 	(*section_len)--;
 	if (*(*section)++ == '(')
@@ -222,7 +237,7 @@ bool parse_paren(stl_obj *const obj,
 
 // Helper for get_stl_obj. Scans for a ([x|y] [0-9]+) and returns true or else
 // marks the object as invalid and returns false.
-bool scanForObjComponent(stl_obj *const obj, const char *x_or_y,
+static bool scanForObjComponent(stl_obj *const obj, const char *x_or_y,
 	const char **section, size_t *const section_len) {
 	assert(*x_or_y == 'x' || *x_or_y == 'y');
 	
@@ -253,7 +268,7 @@ bool scanForObjComponent(stl_obj *const obj, const char *x_or_y,
 
 // Helper for getSTLobj. On success, true is returned and *section is moved
 // past the rest of the object.
-bool consumeRestOfObj(stl_obj *const obj, const enum stl_obj_type type,
+static bool consumeRestOfObj(stl_obj *const obj, const enum stl_obj_type type,
 	const char **section, size_t *const section_len) {
 	obj->type = type;
 	if (!scanForObjComponent(obj, "x", section, section_len))
@@ -268,6 +283,88 @@ bool consumeRestOfObj(stl_obj *const obj, const enum stl_obj_type type,
 		return false;
 	}
 	return true;
+}
+
+// Return true if the next character in *psection is nextCh, and scoot one char
+// forward. Return false otherwise, leaving *psection and *psection_len alone.
+static bool nextChar_and_scoot(const char nextCh, const char **psection,
+	size_t *const psection_len) {
+	if (*psection_len < 1)  // no next character
+		return false;
+	if (**psection != nextCh)
+		return false;
+	
+	// otherwise, nextCh was indeed next. Move *psection forward, and --_len.
+	(*psection)++;
+	(*psection_len)--;
+	return true;
+}
+
+static int read_x_or_y(const char x_or_y, const char **psection,
+	size_t *const psection_len) {
+	int fail = INT_MIN;
+	if (x_or_y != 'x' && x_or_y != 'y')
+		return fail;
+	
+	if (!nextChar_and_scoot('(', psection, psection_len))
+		return fail;
+	trimWhitespace(psection, psection_len);
+	
+	if (!nextChar_and_scoot(x_or_y, psection, psection_len))
+		return fail;
+	trimWhitespace(psection, psection_len);
+	
+	int rv;
+	if (1 != sscanf(*psection, "%d", &rv))
+		return fail;
+	int len = intAsStrLen(rv);
+	(*psection) += len;
+	(*psection_len) -= len;
+	trimWhitespace(psection, psection_len);
+	
+	if (!nextChar_and_scoot(')', psection, psection_len))
+		return fail;
+	trimWhitespace(psection, psection_len);
+	
+	return rv;
+}
+
+static point *getSTLrp(const char **section, size_t *const section_len) {
+	trimWhitespace(section, section_len);
+	if (*section_len < 1)
+		return NULL;
+	const char nextCh = **section;
+	(*section)++;
+	(*section_len)--;
+	if (*section_len < 1)
+		return NULL;
+	
+	if (nextCh == ')')// reached end of section
+		return NULL;
+	if (nextCh != '(') // malformed?
+		return NULL;
+	if (!nextWordIs("point", section, section_len) || *section_len < 1)
+		return NULL;
+	
+	point *rp = nnmalloc(sizeof(point));
+	rp->x = read_x_or_y('x', section, section_len);
+	if (rp->x == INT_MIN || *section_len < 1) {
+		free(rp);
+		return false;
+	}
+	rp->y = read_x_or_y('y', section, section_len);
+	if (rp->y == INT_MIN || *section_len < 1) {
+		free(rp);
+		return false;
+	}
+	
+	if (!nextChar_and_scoot(')', section, section_len)) {
+		free(rp);
+		return false;
+	}
+	
+	rp->next = NULL;  // whew
+	return rp;
 }
 
 // Return a populated stl_obj. If a well-formed object is found, *section is 
