@@ -1,7 +1,7 @@
 
 # SuperTux v0.1.3 Level Player
 
-<img src="screencaps/stl_player_build_b9e4972.png" height="320">
+<img src="screencaps/stl_player_build_845daa6.png" height="320">
 
 ## Introduction
 
