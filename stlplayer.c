@@ -25,6 +25,8 @@ static const float PLAYER_JUMP_SPEED = -10;
 static const float PLAYER_RUN_SPEED = 7;
 static const float BOUNCINGSNOWBALL_JUMP_SPEED = -9;
 static const float FLYINGSNOWBALL_HOVER_SPEED = -2;
+static float BADGUY_X_SPEED = -2;
+static float JUMPY_JUMP_SPEED = -10;
 
 static const uint8_t ignored_tiles[] = {
 	6, 126, 133,
@@ -48,6 +50,7 @@ enum gOTNi {
 	STL_FLYINGSNOWBALL_TEXTURE_LEFT,
 	STL_FLYINGSNOWBALL_TEXTURE_RIGHT,
 	STL_STALACTITE_TEXTURE,
+	STL_JUMPY_TEXTURE,
 	gOTNlen = 64,
 };
 static uint32_t gObjTextureNames[gOTNlen];  // shared across all levels
@@ -713,8 +716,10 @@ static void fnpl(WorldItem *self) {
 				//assert(lvl.interactivetm[y][x] == 44 || false);
 				lvl.interactivetm[y][x] = 0;
 				break;
-			case MONEY:
-				colls[i]->type = STL_DEAD;
+			case MONEY:  // jumpy
+			case JUMPY:
+				fprintf(stderr, "You died.\n");
+				self->type = STL_PLAYER_DEAD;
 				break;
 			case STL_WIN:
 				fprintf(stderr, "You win!\n");
@@ -830,6 +835,8 @@ static void iceDestroyObstacles(WorldItem *const self) {
 			case STALACTITE:
 			case BOUNCINGSNOWBALL:
 			case FLYINGSNOWBALL:
+			case MONEY:
+			case JUMPY:
 				colls[i]->type = STL_DEAD;  // kill that one
 				break;
 			case STL_KICKED_MRICEBLOCK:  // kill both
@@ -905,6 +912,8 @@ static void bombHandleExplosionCollisions(WorldItem *const self) {
 			case STALACTITE:
 			case BOUNCINGSNOWBALL:
 			case FLYINGSNOWBALL:
+			case MONEY:
+			case JUMPY:
 				coll->type = STL_DEAD;
 				break;
 			case STL_BRICK:
@@ -990,6 +999,21 @@ static void fnstalactite(WorldItem *const self) {
 		self->gravity = true;
 	else
 		framesWaited++;
+}
+
+static void fnjumpy(WorldItem *const self) {
+	size_t colls_len;
+	WorldItem **colls = isCollidingWith(self, &colls_len, GDIRECTION_VERT);
+	for (size_t i = 0; i < colls_len; i++) {
+		const WorldItem *const coll = colls[i];
+		if (coll->type == STL_COIN)
+			continue;
+		else if (bottomOf(self) + 1 == topOf(coll)) {
+			self->speedY = JUMPY_JUMP_SPEED;
+			break;
+		}
+	}
+	free(colls);
 }
 
 // Push a WorldItem onto worldItems. (auto-inits and grows the array)
@@ -1296,8 +1320,6 @@ static void fndummy(WorldItem *const self) {
 	// do nothing
 }
 
-static float BADGUY_X_SPEED = -2;
-
 // Helper for loadLevel.
 static void loadLevelObjects() {
 	for (size_t i = 0; i < lvl.objects_len; i++) {
@@ -1331,11 +1353,11 @@ static void loadLevelObjects() {
 				true);
 			w->texnam = gObjTextureNames[STL_SPIKY_TEXTURE_LEFT];
 			w->texnam2 = gObjTextureNames[STL_SPIKY_TEXTURE_RIGHT];
-		} else if (obj->type == MONEY) {
-			w = worldItem_new(STL_COIN, obj->x, obj->y - 1,
-				TILE_WIDTH, TILE_HEIGHT, 0, 0, false, NULL, fndummy, false,
-				false, false);
-			w->texnam = gTextureNames[44];
+		} else if (obj->type == MONEY || obj->type == JUMPY) {
+			w = worldItem_new(JUMPY, obj->x, obj->y - 1,
+				TILE_WIDTH, TILE_HEIGHT, 0, JUMPY_JUMP_SPEED, true, NULL,
+				fnjumpy, false, false, false);
+			w->texnam = gObjTextureNames[STL_JUMPY_TEXTURE];
 		} else if (obj->type == FLYINGSNOWBALL) {
 			w = worldItem_new(FLYINGSNOWBALL, obj->x, obj->y - 1,
 				TILE_WIDTH, TILE_HEIGHT, 0, FLYINGSNOWBALL_HOVER_SPEED, false,
@@ -1419,6 +1441,8 @@ static bool populateGOTN() {
 		"textures/flyingsnowball.data", true, true);
 	initGLTextureNam(gObjTextureNames[STL_STALACTITE_TEXTURE],
 		"textures/stalactite.data", false, true);
+	initGLTextureNam(gObjTextureNames[STL_JUMPY_TEXTURE], "textures/jumpy.data",
+		false, true);
 		
 	return glGetError() == GL_NO_ERROR;
 }

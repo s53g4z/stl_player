@@ -32,6 +32,7 @@ enum stl_obj_type {
 	FLYINGSNOWBALL,
 	MONEY,
 	SPIKY,
+	JUMPY,
 };
 
 struct WorldItem {
