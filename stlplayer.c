@@ -354,7 +354,7 @@ static bool playerLandedOnSurface(WorldItem **const colls,
 			case STL_BRICK:
 			case STL_BLOCK:
 			case STALACTITE:
-			case STL_BONUS:
+			case STL_BONUS:  // bonus are the [?] squares
 			case STL_INVISIBLE:
 				return true;
 		}
@@ -759,6 +759,8 @@ static void maybeTurnAround(WorldItem *const self) {
 		GDIRECTION_VERT);
 	bool onSolidSurface = false;
 	for (size_t i = 0; i < collisions_len; i++) {
+		if (colls[i]->type == STL_COIN)
+			continue;  // coins are not a solid surface
 		if (bottomOf(self) + 1 == topOf(colls[i])) {
 			onSolidSurface = true;
 			break;
@@ -800,6 +802,8 @@ static void fnbouncingsnowball(WorldItem *const self) {
 	WorldItem **colls = isCollidingWith(self, &collisions_len, GDIRECTION_BOTH);
 	for (size_t i = 0; i < collisions_len; i++) {
 		const WorldItem *const coll = colls[i];
+		if (coll->type == STL_COIN)
+			continue;  // coins are not solid blocks to bounce off
 		if (bottomOf(self) + 1 == topOf(coll)) {  // bounce off surface
 			self->speedY = BOUNCINGSNOWBALL_JUMP_SPEED;
 			break;
@@ -1328,7 +1332,7 @@ static void loadLevelObjects() {
 			w->texnam = gObjTextureNames[STL_SPIKY_TEXTURE_LEFT];
 			w->texnam2 = gObjTextureNames[STL_SPIKY_TEXTURE_RIGHT];
 		} else if (obj->type == MONEY) {
-			w = worldItem_new(MONEY, obj->x, obj->y - 1,
+			w = worldItem_new(STL_COIN, obj->x, obj->y - 1,
 				TILE_WIDTH, TILE_HEIGHT, 0, 0, false, NULL, fndummy, false,
 				false, false);
 			w->texnam = gTextureNames[44];
