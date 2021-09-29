@@ -11,6 +11,14 @@ The goal of the SuperTux v0.1.3 Level Player project is to produce an unofficial
 
 Run `./build.sh` to build. The single executable program emitted is the SuperTux v0.1.3 Level player.
 
+## How to Play
+
+Use WASD or arrow keys to move. Holding CTRL allows stunned ice cubes to be picked up. Press q to quit the game.
+
+The objective of the game is to make it to the goal at the end of each (side-scrolling) level.
+
+Some enemies will die when jumped upon.
+
 ## Development
 
 See [README-dev.md](/README-dev.md) for details.
