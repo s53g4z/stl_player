@@ -1585,8 +1585,8 @@ static void initialize() {
 	maybeInitgTextureNames();
 	
 	assert(populateGOTN());
-	assert(loadLevel("gpl/levels/level1.stl"));  // xxx
-	gCurrLevel = 1;  // hack for debugging xxx
+	assert(loadLevel("gpl/levels/level6.stl"));  // xxx
+	gCurrLevel = 6;  // hack for debugging xxx
 	
 	assert(loadLevelBackground());
 }
