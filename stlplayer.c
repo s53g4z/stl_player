@@ -1220,6 +1220,12 @@ static void maybeInitgTextureNames() {
 	gTextureNames[46] = gTextureNames[44];
 	initGLTextureNam(gTextureNames[47], "textures/block4.data", false, false);
 	initGLTextureNam(gTextureNames[48], "textures/block5.data", false, false);
+	
+	initGLTextureNam(gTextureNames[49], "textures/block6.data", false, false);
+	initGLTextureNam(gTextureNames[50], "textures/block7.data", false, false);
+	initGLTextureNam(gTextureNames[51], "textures/block8.data", false, false);
+	initGLTextureNam(gTextureNames[52], "textures/block9.data", false, false);
+	
 	initGLTextureNam(gTextureNames[57], "textures/pipe5.data", false, true);
 	initGLTextureNam(gTextureNames[58], "textures/pipe6.data", false, true);
 	initGLTextureNam(gTextureNames[59], "textures/pipe7.data", false, true);
@@ -1332,7 +1338,7 @@ static void loadLevelInteractives() {
 			const uint8_t blocks[] = {  // tileIDs for solid tiles
 				10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 25,
 				27, 28, 29, 30, 31, 35, 36, 37, 38, 39, 40, 41, 42, 43, 47, 48,
-				57, 58, 59, 60, 61, 84, 102, 103, 105, 113, 114,
+				49, 50, 51, 52, 57, 58, 59, 60, 61, 84, 102, 103, 105, 113, 114,
 				124, 125, 128,
 			};
 			if (bsearch(&tileID, blocks, sizeof(blocks)/sizeof(uint8_t), 
@@ -1670,7 +1676,7 @@ static point selectResetPoint() {
 
 static void reloadLevel(keys *const k, bool ignoreCheckpoints) {
 	assert(k);
-	if (gCurrLevel > 8)
+	if (gCurrLevel > 9)
 		gCurrLevel = 1;  // hack
 	
 	point rp;
@@ -1694,6 +1700,8 @@ static void reloadLevel(keys *const k, bool ignoreCheckpoints) {
 		file = "gpl/levels/level7.stl";
 	else if (gCurrLevel == 8)
 		file = "gpl/levels/level8.stl";
+	else if (gCurrLevel == 9)
+		file = "gpl/levels/level9.stl";
 	assert(loadLevel(file));
 	
 	if (!ignoreCheckpoints && rp.x != -1 && rp.y != -1) {
