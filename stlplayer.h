@@ -44,6 +44,7 @@ struct WorldItem {
 	uint32_t texnam, texnam2;
 	bool gravity, patrol;
 	void (*frame)(struct WorldItem *const w);
+	struct WorldItem *next;
 };
 typedef struct WorldItem WorldItem;
 

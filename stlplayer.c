@@ -12,8 +12,9 @@ enum { LEFT, RIGHT, UP, DOWN,
 	GDIRECTION_HORIZ, GDIRECTION_VERT, GDIRECTION_BOTH, };
 typedef int GeneralDirection;
 
-static WorldItem **worldItems;  // array of pointers to WorldItem
-static size_t worldItems_len, worldItems_cap;
+static const int BUCKETS_SIZE = 500;
+static WorldItem **gBuckets;  // array of pointers to WorldItem (ll)
+static size_t gBuckets_len;
 
 static stl lvl;
 
@@ -61,7 +62,7 @@ static void initGLTextureNam(const uint32_t texnam, const char *const imgnam,
 static WorldItem *worldItem_new(enum stl_obj_type type, int x, int y, int wi,
 	int h, float spx, float spy, bool gravity, char *imgnam,
 	void(*frame)(WorldItem *const), bool mirrable, bool patrol, bool hasAlpha) {
-	assert(wi > 0 && h > 0);
+	assert(wi > 0 && h > 0 && wi < BUCKETS_SIZE);
 	WorldItem *w = nnmalloc(sizeof(WorldItem));
 	w->type = type;
 	w->x = x;
@@ -73,6 +74,7 @@ static WorldItem *worldItem_new(enum stl_obj_type type, int x, int y, int wi,
 	w->frame = frame;
 	w->gravity = gravity;
 	w->patrol = patrol;  // just a value, does nothing on its own
+	w->next = NULL;
 	
 	w->texnam = 0;
 	w->texnam2 = 0;
@@ -106,6 +108,50 @@ static int bottomOf(const WorldItem *const w) {
 	return w->y + w->height;
 }
 
+// Delete w from gBuckets. (w is not freed here.)
+static void delFromBuckets(WorldItem *const w) {
+	assert(w->x > -BUCKETS_SIZE);
+	const size_t bucket = w->x / BUCKETS_SIZE;
+	assert(bucket < gBuckets_len && gBuckets[bucket]);
+	
+	WorldItem *curr = gBuckets[bucket];
+	while (curr) {
+		if (curr->next == w) {
+			curr->next = curr->next->next;
+			w->next = NULL;
+			return;
+		}
+		curr = curr->next;
+	}
+	
+	assert(0);  // wrong bucket?
+}
+
+// Add w to gBuckets.
+static void addToBuckets(WorldItem *const w) {
+	assert(BUCKETS_SIZE > 0 && w->x > -BUCKETS_SIZE && w->next == NULL);
+	
+	const size_t bucket = w->x / BUCKETS_SIZE;
+	assert(bucket < gBuckets_len);
+
+	WorldItem *dnext = gBuckets[bucket]->next;
+	gBuckets[bucket]->next = w;
+	w->next = dnext;
+}
+
+static void setX(WorldItem *const w, int x) {
+	const ssize_t bucketOrig = w->x / BUCKETS_SIZE;
+	const ssize_t bucketNew = x / BUCKETS_SIZE;
+	assert(bucketOrig >= 0 && bucketNew >= 0);
+	
+	if (bucketNew != bucketOrig) {
+		delFromBuckets(w);
+		w->x = x;
+		addToBuckets(w);
+	} else
+		w->x = x;
+}
+
 // Return true if c is between a and b.
 static bool isBetween(const int c, const int a, const int b) {
 	assert(a <= b);
@@ -137,7 +183,7 @@ static void iCW_expand_w(WorldItem *const w, GeneralDirection dir) {
 	assert(w->x >= INT_MIN + 1 && w->y  >= INT_MIN + 1);
 	assert(w->width <= INT_MAX - 2 && w->height <= INT_MAX - 2);
 	if (dir == GDIRECTION_HORIZ || dir == GDIRECTION_BOTH) {
-		w->x--;
+		setX(w, w->x - 1);
 		w->width += 2;
 	}
 	if (dir == GDIRECTION_VERT || dir == GDIRECTION_BOTH) {
@@ -149,7 +195,7 @@ static void iCW_expand_w(WorldItem *const w, GeneralDirection dir) {
 // iCW helper. Shrink w in either the horizontal or vertical direction.
 static void iCW_shrink_w(WorldItem *const w, GeneralDirection dir) {
 	if (dir == GDIRECTION_HORIZ || dir == GDIRECTION_BOTH) {
-		w->x++;
+		setX(w, w->x + 1);
 		w->width -= 2;
 	}
 	if (dir == GDIRECTION_VERT || dir == GDIRECTION_BOTH) {
@@ -158,30 +204,44 @@ static void iCW_shrink_w(WorldItem *const w, GeneralDirection dir) {
 	}
 }
 
+// Traverse list looking for collisions with w.
+static void checkLLCollisions(const WorldItem *const w, WorldItem *list,
+	WorldItem ***rv, size_t *const pcolls_len, size_t *const pcolls_cap) {
+	for (; list; list = list->next) {
+		if (!isCollidingHorizontally(w, list) ||
+			!isCollidingVertically(w, list)) {
+			continue;
+		}
+		
+		if (*pcolls_len == *pcolls_cap) {
+			assert(*pcolls_cap <= SIZE_MAX / 2);
+			*pcolls_cap *= 2;
+			*rv = nnrealloc(*rv, sizeof(WorldItem *) * *pcolls_cap);
+		}
+		(*rv)[(*pcolls_len)++] = list;
+	}
+}
+
 // Return an array of WorldItems w is colliding with. The caller must free rv
 // (but not the pointers stored in rv).
-static WorldItem **isCollidingWith(WorldItem *const w,
-	size_t *const collisions_len, GeneralDirection gdir) {
+static WorldItem **isCollidingWith(WorldItem *const w, size_t *const pcolls_len,
+	GeneralDirection gdir) {
 	assert(gdir == GDIRECTION_HORIZ || gdir == GDIRECTION_VERT ||
 		gdir == GDIRECTION_BOTH);
 	iCW_expand_w(w, gdir);
 	WorldItem **rv = malloc(sizeof(WorldItem *) * 1);
-	*collisions_len = 0;
-	size_t collisions_capacity = 1;
-	for (size_t i = 0; i < worldItems_len; i++) {
-		if (!isCollidingHorizontally(w, worldItems[i]) ||
-			!isCollidingVertically(w, worldItems[i]))
-			continue;
-		
-		if (*collisions_len == collisions_capacity) {
-			assert(collisions_capacity <= SIZE_MAX / 2);
-			collisions_capacity *= 2;
-			WorldItem **newrv = nnrealloc(rv, sizeof(WorldItem *) *
-				collisions_capacity);
-			rv = newrv;
-		}
-		rv[(*collisions_len)++] = worldItems[i];
-	}
+	*pcolls_len = 0;
+	size_t colls_cap = 1;
+	
+	const size_t bucket = w->x / BUCKETS_SIZE;
+	if (bucket > 0)
+		checkLLCollisions(w, gBuckets[bucket - 1]->next, &rv, pcolls_len,
+			&colls_cap);
+	checkLLCollisions(w, gBuckets[bucket]->next, &rv, pcolls_len, &colls_cap);
+	if (bucket < gBuckets_len - 1)
+		checkLLCollisions(w, gBuckets[bucket + 1]->next, &rv, pcolls_len,
+			&colls_cap);
+	
 	iCW_shrink_w(w, gdir);
 	return rv;
 }
@@ -198,13 +258,10 @@ static int canMoveX(WorldItem *const w) {
 	for (size_t i = 0; i < fabs(w->speedX); i++) {
 		float origX = w->x;
 		if (w->speedX > 0)
-			w->x += i;
+			setX(w, w->x + i);
 		else
-			w->x -= i;
+			setX(w, w->x - i);
 		bool shouldBreak = false;
-		//if ((w->speedX < 0 && leftOf(w) - 1 == 0) || (w->speedX > 0 &&
-		//	rightOf(w) + 1 == SCREEN_WIDTH))
-		//	shouldBreak = true;
 		if (w == player && ((w->speedX < 0 && leftOf(w) - 1 == 0) ||
 			(gScrollOffset + SCREEN_WIDTH >= lvl.width * TILE_WIDTH &&
 			w->speedX > 0 && rightOf(w) + 1 == SCREEN_WIDTH)))
@@ -224,7 +281,7 @@ static int canMoveX(WorldItem *const w) {
 			}
 			free(colls);
 		}
-		w->x = origX;
+		setX(w, origX);
 		if (shouldBreak)
 			break;
 		if (w->speedX > 0)
@@ -249,9 +306,6 @@ static int canMoveY(WorldItem *const w) {
 		bool shouldBreak = false;
 		if (w->speedY > 0 && bottomOf(w) + 1 == SCREEN_HEIGHT) {
 			shouldBreak = true;
-		//} else if (w->speedY < 0 && topOf(w) - 1 == 0) {
-		//	w->speedY *= -1;  // bonk
-		//	shouldBreak = true;
 		} else {
 			size_t collisions_len;
 			WorldItem **colls = isCollidingWith(w, &collisions_len,
@@ -288,8 +342,6 @@ static int canMoveTo(WorldItem *const w, const GeneralDirection dir) {
 		return canMoveX(w);
 	else //if (dir == GDIRECTION_VERT)
 		return canMoveY(w);
-	//assert(NULL);
-	//return 0;
 }
 
 static void player_toggle_size() {
@@ -302,31 +354,48 @@ static void player_toggle_size() {
 	}
 }
 
-static void deletefrom_worldItems(int index) {
-	assert(index >= 0 && (size_t)index < worldItems_len);
-	free(worldItems[index]);
-	memmove(&(worldItems[index]), &(worldItems[index+1]),
-		(worldItems_len - index - 1) * sizeof(WorldItem *));
-	worldItems_len--;
+// Free w->next in the list.
+static void delNodeAfter(WorldItem *w) {
+	WorldItem *trash = w->next;
+	w->next = w->next->next;
+	memset(trash, 0xe5, sizeof(*trash));
+	free(trash);
 }
 
 // Scroll everything diff pixels left.
 static void scrollTheScreen(int diff) {
-	for (size_t i = 0; i < worldItems_len; i++) {
-		WorldItem *const w = worldItems[i];
-		w->x -= diff;
+	for (size_t i = 0; i < gBuckets_len; i++) {
+		WorldItem *node = gBuckets[i];
+		while (node && node->next) {
+			node->next->x -= diff;
+			if (node->next->x < -100) {
+				node->next->x = -100;  // pile them up lol
+			}
+			const size_t properBucket = node->next->x / BUCKETS_SIZE;
+			if (properBucket != i) {
+				WorldItem *migrate = node->next;
+				node->next = node->next->next;
+				migrate->next = NULL;
+				addToBuckets(migrate);
+			} else
+				node = node->next;
+		}
 	}
+	
 	gScrollOffset += diff;
 }
 
 // Delete all WorldItems far past the left edge of the screen.
 static void cleanupWorldItems() {
-	for (size_t i = 0; i < worldItems_len; i++) {
-		const WorldItem *const w = worldItems[i];
-		if (w->x < -100) {
-			assert(i != 0);  // player should never get past x = 0
-			deletefrom_worldItems(i--);
-		}
+	WorldItem *w = gBuckets[0];
+	while (w && w->next) {
+		if (w->next->x <= -100) {
+			WorldItem *trash = w->next;
+			w->next = w->next->next;
+			memset(trash, 0xe4, sizeof(*w));
+			free(trash);
+		} else
+			w = w->next;
 	}
 }
 
@@ -396,9 +465,8 @@ static void processInput(const keys *const k) {
 			player->speedX *= 2;
 		if (player->speedX > fabs(PLAYER_RUN_SPEED))
 			player->speedX = fabs(PLAYER_RUN_SPEED);
-		//player->speedX = fabs(player->speedX);
 		
-		player->x += canMoveTo(player, GDIRECTION_HORIZ);
+		setX(player, player->x + canMoveTo(player, GDIRECTION_HORIZ));
 		if (!gPlayerLastDirectionWasRight)
 			wiSwapTextures(player);
 		gPlayerLastDirectionWasRight = true;
@@ -412,7 +480,7 @@ static void processInput(const keys *const k) {
 		if (player->speedX < -fabs(PLAYER_RUN_SPEED))
 			player->speedX = -fabs(PLAYER_RUN_SPEED);
 		
-		player->x += canMoveTo(player, GDIRECTION_HORIZ);
+		setX(player, player->x + canMoveTo(player, GDIRECTION_HORIZ));
 		if (gPlayerLastDirectionWasRight)
 			wiSwapTextures(player);
 		gPlayerLastDirectionWasRight = false;
@@ -421,7 +489,7 @@ static void processInput(const keys *const k) {
 		player->speedX *= 0.66;
 		if (fabs(player->speedX) < 0.1)
 			player->speedX = 0;
-		player->x += canMoveTo(player, GDIRECTION_HORIZ);
+		setX(player, player->x + canMoveTo(player, GDIRECTION_HORIZ));
 	}
 	
 	static bool jumped = true;
@@ -466,44 +534,31 @@ static void processInput(const keys *const k) {
 	maybeScrollScreen();
 }
 
-// Run the frame functions of elements of worldItems.
-static void applyFrame() {
-	for (size_t i = 0; i < worldItems_len; i++)  // add to end ok, don't delete!
-		worldItems[i]->frame(worldItems[i]);
-		
-	// reap dead badguys and collected coins
-	for (size_t i = 0; i < worldItems_len; i++)
-		if (worldItems[i]->type == STL_DEAD)
-			deletefrom_worldItems(i--);
-		else if (worldItems[i]->type == STL_BRICK_DESTROYED) {
-			int x = (worldItems[i]->x + gScrollOffset) / TILE_WIDTH;
-			int y = worldItems[i]->y / TILE_HEIGHT;
-			lvl.interactivetm[y][x] = 0;
-			deletefrom_worldItems(i--);
-		}
-}
-
 static void applyGravity() {
-	for (size_t i = 0; i < worldItems_len; i++) {
-		WorldItem *const w = worldItems[i];
-		if (w->gravity == false)  // not affected by gravity
-			continue;
-		int moveY = canMoveTo(w, GDIRECTION_VERT);
-		if (moveY == 0)
-			w->speedY = 1;
-		else {
-			w->speedY += 0.333;
-			//w->speedY *= 2;
-			w->y += moveY;
+	for (size_t i = 0; i < gBuckets_len; i++)
+		for (WorldItem *curr = gBuckets[i]->next; curr; curr = curr->next) {
+			if (curr->gravity == false)
+				continue;
+			int moveY = canMoveTo(curr, GDIRECTION_VERT);
+			if (moveY == 0)
+				curr->speedY = 1;
+			else {
+				curr->speedY += 0.333;
+				curr->y += moveY;
+			}
 		}
-	}
 }
 
 // Opposite of initialize().
 void terminate() {
-	for (size_t i = 0; i < worldItems_len; i++)
-		free(worldItems[i]);
-	free(worldItems);
+	for (size_t i = 0; i < gBuckets_len; i++)
+		for (WorldItem *w = gBuckets[i]; w;) {
+			WorldItem *next = w->next;
+			free(w);
+			w = next;
+		}
+	memset(gBuckets, 0xe4, gBuckets_len * sizeof(WorldItem *));  // debug
+	free(gBuckets);
 	lrFailCleanup(NULL, &lvl);
 }
 
@@ -567,8 +622,7 @@ static void fnret(WorldItem *self) {
 	return;
 }
 
-static void pushto_worldItems(const WorldItem *const v);
-static const WorldItem *worldItem_new_block(enum stl_obj_type type, int x, int y);
+static WorldItem *worldItem_new_block(enum stl_obj_type type, int x, int y);
 
 static bool hitScreenBottom(const WorldItem *const self) {
 	return self->y + self->height + 1 >= SCREEN_HEIGHT;
@@ -585,12 +639,12 @@ static void playerKicks(WorldItem *coll) {
 	
 	// player is left of the iceblock
 	if (player->x + player->width / 2 < coll->x + coll->width / 2) {
-		coll->x = player->x + player->width;
+		setX(coll, player->x + player->width);
 		if (coll->speedX < 0)
 			wiSwapTextures(coll);
 		coll->speedX = MRICEBLOCK_KICKSPEED;  // iceblock goes right
 	} else {  // player is right of the iceblock
-		coll->x = player->x - coll->width;  // not a typo
+		setX(coll, player->x - coll->width);
 		if (coll->speedX > 0)
 			wiSwapTextures(coll);
 		coll->speedX = -MRICEBLOCK_KICKSPEED;  // iceblock goes left
@@ -641,9 +695,9 @@ static void fnpl(WorldItem *self) {
 				} else if (self->state == 1) {
 					colls[i]->gravity = false;
 					if (self->speedX > 0)  // player is going right
-						colls[i]->x = self->x + self->width / 2;
+						setX(colls[i], self->x + self->width / 2);
 					else if (self->speedX < 0)  // player is going left
-						colls[i]->x = self->x - self->width / 2;
+						setX(colls[i], self->x - self->width / 2);
 					colls[i]->y = self->y - 5;  // arbitrary
 					//self->state = 2;
 				}
@@ -698,11 +752,11 @@ static void fnpl(WorldItem *self) {
 					topOf(self) - 1 == bottomOf(colls[i])) {
 					colls[i]->state = 0;  // deactivate (b/c one use only)
 					lvl.interactivetm[y - 1][x] = 44;
-					pushto_worldItems(worldItem_new_block(
+					addToBuckets(worldItem_new_block(
 						STL_COIN,
 						colls[i]->x,
 						colls[i]->y - TILE_HEIGHT
-					));  // hairy!
+					));  // hairy! xxx
 				}
 				break;
 			case STL_BRICK:
@@ -742,10 +796,9 @@ static void fnpl(WorldItem *self) {
 
 // Turn around a WorldItem (that has two texnams). Relatively cheap fn.
 static void turnAround(WorldItem *const self) {
+	assert(self->speedX != INT_MIN);
 	self->speedX *= -1;  // toggle horizontal direction
-	uint32_t tmp = self->texnam;
-	self->texnam = self->texnam2;
-	self->texnam2 = tmp;
+	wiSwapTextures(self);
 }
 
 // for patrol or smthn
@@ -755,13 +808,12 @@ static void maybeTurnAround(WorldItem *const self) {
 	int origX = self->x;
 	// calculate hypothetical move
 	if (self->speedX < 0)  // going left
-		self->x -= self->width;
+		setX(self, self->x - self->width);
 	else  // going right
-		self->x += self->width;
+		setX(self, self->x + self->width);
 
 	size_t collisions_len;
-	WorldItem **colls = isCollidingWith(self, &collisions_len,
-		GDIRECTION_VERT);
+	WorldItem **colls = isCollidingWith(self, &collisions_len, GDIRECTION_VERT);
 	bool onSolidSurface = false;
 	for (size_t i = 0; i < collisions_len; i++) {
 		if (colls[i]->type == STL_COIN)
@@ -774,7 +826,7 @@ static void maybeTurnAround(WorldItem *const self) {
 	free(colls);
 	if (!onSolidSurface)  // if gonna fall a hypothetical move, turn around
 		turnAround(self);
-	self->x = origX;
+	setX(self, origX);
 }
 
 // Callback for bot frame. Move the bot around horizontally.
@@ -786,7 +838,7 @@ static void fnbot(WorldItem *const self) {
 	if (moveX == 0) {
 		turnAround(self);
 	}
-	self->x += moveX;
+	setX(self, self->x + moveX);
 }
 
 static void fnsnowball(WorldItem *const self) {
@@ -873,7 +925,7 @@ static void fniceblock(WorldItem *const self) {
 				turnAround(self);  // in shame
 				return;  // lost cause
 			}
-			self->x += moveX;
+			setX(self, self->x + moveX);
 			self->speedX -= moveX;
 		} while (0 != self->speedX);
 		self->speedX = origSpeedX;  // do it all over again at the next frame
@@ -885,7 +937,7 @@ static void fniceblock(WorldItem *const self) {
 static void bombExplodes(WorldItem *const self, int *const framesElapsed) {
 	self->type = STL_BOMB_EXPLODING;
 	self->gravity = false;
-	self->x -= self->width;
+	setX(self, self->x - self->width);
 	self->y -= self->height;
 	self->width *= 3;
 	self->height *= 3;
@@ -970,6 +1022,10 @@ static void fnbomb(WorldItem *const self) {
 }
 
 static void fnspiky(WorldItem *const self) {
+	if (hitScreenBottom(self)) {
+		self->type = STL_DEAD;
+		return;
+	}
 	fnbot(self);
 }
 
@@ -1016,19 +1072,31 @@ static void fnjumpy(WorldItem *const self) {
 	free(colls);
 }
 
-// Push a WorldItem onto worldItems. (auto-inits and grows the array)
-static void pushto_worldItems(const WorldItem *const v) {
-	WorldItem *const w = (WorldItem *const)v;
-	if (worldItems_cap == 0) {  // uninitialized
-		worldItems_cap = 1;
-		worldItems = nnmalloc(worldItems_cap * sizeof(WorldItem *));
+// Run the frame functions of elements of worldItems.
+static void applyFrame() {
+	fnpl(player);  // the player's callback frame must be run first
+
+	for (size_t i = 0; i < gBuckets_len; i++)
+		for (WorldItem *curr = gBuckets[i]->next; curr; curr = curr->next) {
+			if (curr == player)
+				continue;
+			curr->frame(curr);
+		}
+	
+	for (size_t i = 0; i < gBuckets_len; i++) {
+		WorldItem *w = gBuckets[i];
+		while (w && w->next) {
+			if (w->next->type == STL_DEAD) {
+				delNodeAfter(w);
+			} else if (w->next->type == STL_BRICK_DESTROYED) {
+				int x = (w->next->x + gScrollOffset) / TILE_WIDTH;
+				int y = w->next->y / TILE_HEIGHT;
+				lvl.interactivetm[y][x] = 0;
+				delNodeAfter(w);
+			} else
+				w = w->next;
+		}
 	}
-	if (worldItems_len == worldItems_cap) {  // need to double capacity
-		assert(worldItems_cap <= SIZE_MAX / 2);
-		worldItems_cap *= 2;
-		worldItems = nnrealloc(worldItems, worldItems_cap * sizeof(WorldItem *));
-	}
-	worldItems[worldItems_len++] = w;
 }
 
 static uint32_t gTextureNames[257];  // 0-256, plus 1 for the background image
@@ -1103,8 +1171,7 @@ static void initGLTextureNam(const uint32_t texnam, const char *const imgnam,
 
 static void maybeInitgTextureNames() {
 	static bool ran = false;
-	if (ran)
-		return;
+	assert(!ran);
 	ran = true;
 	
 	glGenTextures(257, gTextureNames);
@@ -1136,7 +1203,6 @@ static void maybeInitgTextureNames() {
 	initGLTextureNam(gTextureNames[29], "textures/block3.data", false, false);
 	initGLTextureNam(gTextureNames[30], "textures/snow18.data", false, false);
 	initGLTextureNam(gTextureNames[31], "textures/snow19.data", false, false);
-	
 	initGLTextureNam(gTextureNames[32], "textures/darksnow1.data", false, true);
 	gTextureNames[33] = gTextureNames[32];
 	gTextureNames[34] = gTextureNames[32];
@@ -1149,21 +1215,16 @@ static void maybeInitgTextureNames() {
 	gTextureNames[41] = gTextureNames[36];
 	gTextureNames[42] = gTextureNames[36];
 	gTextureNames[43] = gTextureNames[36];
-	
 	initGLTextureNam(gTextureNames[44], "textures/coin1.data", false, true);
-	
 	gTextureNames[45] = gTextureNames[44];
 	gTextureNames[46] = gTextureNames[44];
-	
 	initGLTextureNam(gTextureNames[47], "textures/block4.data", false, false);
 	initGLTextureNam(gTextureNames[48], "textures/block5.data", false, false);
-	
 	initGLTextureNam(gTextureNames[57], "textures/pipe5.data", false, true);
 	initGLTextureNam(gTextureNames[58], "textures/pipe6.data", false, true);
 	initGLTextureNam(gTextureNames[59], "textures/pipe7.data", false, true);
 	initGLTextureNam(gTextureNames[60], "textures/pipe8.data", false, true);
 	initGLTextureNam(gTextureNames[61], "textures/block10.data", false, true);
-	
 	initGLTextureNam(gTextureNames[76], "textures/waves-1.data", false, true);
 	initGLTextureNam(gTextureNames[77], "textures/brick0.data", false, false);
 	initGLTextureNam(gTextureNames[78], "textures/brick1.data", false, false);
@@ -1230,10 +1291,9 @@ static void paintTile(uint8_t tileID, int x, int y) {
 }
 
 // Handy convenience function to make a new block. x and y are screen coords.
-static const WorldItem *worldItem_new_block(enum stl_obj_type type, int x,
-	int y) {
+static WorldItem *worldItem_new_block(enum stl_obj_type type, int x, int y) {
 	int width = TILE_WIDTH, height = TILE_HEIGHT;
-	if (type == SNOWBALL || type == MRICEBLOCK) {
+	if (type == SNOWBALL || type == MRICEBLOCK || type == STL_BOMB) {
 		width -= 2;  // slightly smaller hitbox
 		height -= 2;  // ibid
 		assert(width == 30 && height == 30);
@@ -1254,8 +1314,8 @@ static void paintTM(uint8_t **tm) {
 		for (size_t w = nTilesScrolledOver;
 			w < nTilesScrolledOver + SCREEN_WIDTH / TILE_WIDTH + playerIsBetweenTiles;
 			w++) {
-			int x = w * TILE_WIDTH - gScrollOffset;  // screen coordinates
-			int y = h * TILE_HEIGHT;  // ibid
+			const int x = w * TILE_WIDTH - gScrollOffset;  // screen coordinates
+			const int y = h * TILE_HEIGHT;  // ibid
 			paintTile(tm[h][w], x, y);
 		}
 }
@@ -1277,24 +1337,24 @@ static void loadLevelInteractives() {
 			};
 			if (bsearch(&tileID, blocks, sizeof(blocks)/sizeof(uint8_t), 
 				sizeof(uint8_t), cmpForUint8_t))
-				pushto_worldItems(worldItem_new_block(STL_BLOCK, x, y));
+				addToBuckets(worldItem_new_block(STL_BLOCK, x, y));
 			else if (tileID == 26 || tileID == 83)
-				pushto_worldItems(worldItem_new_block(STL_BONUS, x, y));
+				addToBuckets(worldItem_new_block(STL_BONUS, x, y));
 			else if (tileID == 77 || tileID == 78 || tileID == 104)
-				pushto_worldItems(worldItem_new_block(STL_BRICK, x, y));
+				addToBuckets(worldItem_new_block(STL_BRICK, x, y));
 			else if (tileID == 112) {
 				WorldItem *const wi = worldItem_new(STL_INVISIBLE, x, y,
 					TILE_WIDTH, TILE_HEIGHT, 0, 0, false,
 					"textures/transparent.data", fnret, false, false, true);
 				wi->texnam2 = gTextureNames[112];
 				wi->state = 1;
-				pushto_worldItems(wi);
+				addToBuckets(wi);
 				assert(lvl.interactivetm[h][w] == 112);
 				lvl.interactivetm[h][w] = 0;
 			} else if (tileID == 132)
-				pushto_worldItems(worldItem_new_block(STL_WIN, x, y));
+				addToBuckets(worldItem_new_block(STL_WIN, x, y));
 			else if (tileID == 44 || tileID == 45 || tileID == 46)
-				pushto_worldItems(worldItem_new_block(STL_COIN, x, y));
+				addToBuckets(worldItem_new_block(STL_COIN, x, y));
 			else if ((tileID >= 85 && tileID <= 92) || tileID == 76 ||
 				(tileID >= 7 && tileID <= 9) || tileID == 24 || tileID == 25 ||
 				tileID == 122 || tileID == 123 || tileID == 201 ||
@@ -1313,11 +1373,6 @@ static void loadLevelInteractives() {
 					cmpForUint8_t))
 				fprintf(stderr, "DEBUG: unknown tileID %u\n", tileID);
 		}
-}
-
-static void fndummy(WorldItem *const self) {
-	assert(self);
-	// do nothing
 }
 
 // Helper for loadLevel.
@@ -1373,18 +1428,42 @@ static void loadLevelObjects() {
 			fprintf(stderr, "WARN: skipping the load of an obj!\n");
 			continue;
 		}
-		pushto_worldItems(w);
+		addToBuckets(w);
+	}
+}
+
+// Free every node pointed to by head.
+static void freeLinkedList(WorldItem *head) {
+	while (head) {
+		WorldItem *const next = head->next;
+		memset(head, 0xe5, sizeof(*head));  // debug
+		free(head);
+		head = next;
+	}
+}
+
+// Initialize gBuckets for use.
+static void initBuckets() {
+	assert(lvl.width > 0 && BUCKETS_SIZE > 0);
+	
+	gBuckets_len = lvl.width * TILE_WIDTH / BUCKETS_SIZE;
+	if (lvl.width % BUCKETS_SIZE != 0)
+		gBuckets_len++;
+	
+	gBuckets = nnmalloc(gBuckets_len * sizeof(WorldItem *));
+	for (size_t i = 0; i < gBuckets_len; i++) {  // make dummy nodes
+		gBuckets[i] = nnmalloc(sizeof(WorldItem));
+		memset(gBuckets[i], 0xe4, sizeof(WorldItem));
+		gBuckets[i]->next = NULL;
 	}
 }
 
 static bool loadLevel(const char *const level_filename) {
-	// clean up from previous level load
-	for (size_t i = 0; i < worldItems_len; i++) {
-		//glDeleteTextures(1, &worldItems[i]->texnam);  // debug: turn back on
-		//glDeleteTextures(1, &worldItems[i]->texnam2);  // someday.
-		free(worldItems[i]);
+	for (size_t i = 0; i < gBuckets_len; i++) {
+		freeLinkedList(gBuckets[i]);  // (free the dummy nodes too)
 	}
-	worldItems_len = 0;
+	free(gBuckets);
+	//gBuckets_len = 0;
 	gScrollOffset = 0;
 	
 	// load the new level
@@ -1393,10 +1472,12 @@ static bool loadLevel(const char *const level_filename) {
 	if (!lvl.hdr)
 		return false;
 	stlPrinter(&lvl);
-	pushto_worldItems(worldItem_new(STL_PLAYER, lvl.start_pos_x,
-		lvl.start_pos_y, 30, 30, 0, 1, true,
-		"textures/tux.data", fnpl, true, false, true));
-	player = worldItems[0];
+	
+	initBuckets();
+	player = worldItem_new(STL_PLAYER, lvl.start_pos_x, lvl.start_pos_y,
+		30, 30, 0, 1, true, "textures/tux.data", fnpl, true, false, true);
+	addToBuckets(player);
+	
 	loadLevelObjects();
 	loadLevelInteractives();
 	
@@ -1405,6 +1486,10 @@ static bool loadLevel(const char *const level_filename) {
 
 // Populate the gObjTextureNames array with textures (that last the whole game).
 static bool populateGOTN() {
+	static bool ran = false;
+	assert(!ran);
+	ran = true;
+	
 	glGenTextures(gOTNlen, gObjTextureNames);
 	
 	initGLTextureNam(gObjTextureNames[STL_DEAD_MRICEBLOCK_TEXTURE_LEFT],
@@ -1494,23 +1579,16 @@ static void initialize() {
 	maybeInitgTextureNames();
 	
 	assert(populateGOTN());
-	assert(loadLevel("gpl/levels/level8.stl"));  // xxx
-	gCurrLevel = 8;  // hack for debugging xxx
+	assert(loadLevel("gpl/levels/level1.stl"));  // xxx
+	gCurrLevel = 1;  // hack for debugging xxx
 	
 	assert(loadLevelBackground());
 }
 
 // Return true if w is off-screen.
 static bool isOffscreen(const WorldItem *const w) {
-	int top, bottom, left, right;
-	
-	top = w->y;
-	bottom = w->y + w->height;
-	left = w->x;
-	right = w->x + w->width;
-	
-	return (top > SCREEN_HEIGHT || bottom < 0 ||
-		left > SCREEN_WIDTH || right < 0);
+	return (topOf(w) > SCREEN_HEIGHT || bottomOf(w) < 0 ||
+		leftOf(w) > SCREEN_WIDTH || rightOf(w) < 0);
 }
 
 static void drawGLvertices(const float *const vertices, const uint32_t texnam) {
@@ -1519,37 +1597,36 @@ static void drawGLvertices(const float *const vertices, const uint32_t texnam) {
 	glBindAttribLocation(prgm, 0, "vertices");
 	
 	static const float tcoords[] = {
-		0.001, 0.001,
-		0.001, 0.999,
-		0.999, 0.001,
-		0.999, 0.999,
+		0.0001, 0.0001,
+		0.0001, 0.9999,
+		0.9999, 0.0001,
+		0.9999, 0.9999,
 	};
 	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, tcoords);
 	glEnableVertexAttribArray(1);
 	glBindAttribLocation(prgm, 1, "tcoords");
 	assert(glGetError() == GL_NO_ERROR);
 
-	glBindTexture(GL_TEXTURE_2D, texnam);  // ???
+	glBindTexture(GL_TEXTURE_2D, texnam);
 
 	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 	must(glGetError() == GL_NO_ERROR);
 }
 
 static void drawWorldItems() {
-	for (size_t i = 0; i < worldItems_len; i++) {
-		const WorldItem *const w = worldItems[i];
-		assert(w);
-		if (isOffscreen(w) || w->texnam == 0)
-			continue;
-		
-		const float vertices[] = {
-			0+w->x, 0+w->y, 1.0,
-			0+w->x, w->y+w->height, 1.0,
-			w->x+w->width, 0+w->y, 1.0,
-			w->x+w->width, w->y+w->height, 1.0,
-		};
-		drawGLvertices(vertices, w->texnam);
-	}
+	for (size_t i = 0; i < gBuckets_len; i++)
+		for (const WorldItem *w = gBuckets[i]->next; w; w = w->next) {
+			if (isOffscreen(w) || w->texnam == 0)
+				continue;
+			
+			const float vertices[] = {
+				0 + w->x,			0 + w->y,			1.0,
+				0 + w->x,			w->y + w->height,	1.0,
+				w->x + w->width,	0 + w->y,			1.0,
+				w->x + w->width,	w->y + w->height,	1.0,
+			};
+			drawGLvertices(vertices, w->texnam);
+		}
 }
 
 static void drawLevelBackground() {
@@ -1622,11 +1699,18 @@ static void reloadLevel(keys *const k, bool ignoreCheckpoints) {
 	if (!ignoreCheckpoints && rp.x != -1 && rp.y != -1) {
 		if (rp.x - SCREEN_WIDTH / 3 > 0)
 			scrollTheScreen(rp.x - SCREEN_WIDTH / 3);
-		player->x = SCREEN_WIDTH / 3;
+		setX(player, SCREEN_WIDTH / 3);
+		cleanupWorldItems();
 		player->y = rp.y;
 	}
 	
 	gPlayerLastDirectionWasRight = true;  // player starts facing right
+}
+
+static void verifyBuckets() {
+	for (size_t i = 0; i < gBuckets_len; i++)
+		for (WorldItem *w = gBuckets[i]->next; w; w = w->next)
+			assert(w->x / BUCKETS_SIZE == (ssize_t)i);
 }
 
 static void core(keys *const k) {
@@ -1636,6 +1720,9 @@ static void core(keys *const k) {
 		initialized = true;
 	}
 	
+	verifyBuckets();
+	
+	maybeScrollScreen();
 	processInput(k);
 	applyFrame();
 	applyGravity();
