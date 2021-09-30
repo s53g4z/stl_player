@@ -405,7 +405,7 @@ static void maybeScrollScreen() {
 		return;
 	
 	scrollTheScreen(player->x - SCREEN_WIDTH / 3);
-	cleanupWorldItems();
+	//cleanupWorldItems();
 }
 
 static void wiSwapTextures(WorldItem *const w) {
@@ -1541,6 +1541,9 @@ static bool populateGOTN() {
 static bool loadLevelBackground() {
 	char *filename = lvl.background;
 	
+	if (strlen(filename) == 0)
+		return true;
+	
 	// investigate taking off the filename extension
 	if (strlen(filename) > 4 &&
 		0 == strcmp(".jpg", filename + strlen(filename) - 4)) {
@@ -1585,8 +1588,8 @@ static void initialize() {
 	maybeInitgTextureNames();
 	
 	assert(populateGOTN());
-	assert(loadLevel("gpl/levels/level10.stl"));  // xxx
-	gCurrLevel = 10;  // hack for debugging xxx
+	assert(loadLevel("gpl/levels/level11.stl"));  // xxx
+	gCurrLevel = 11;  // hack for debugging xxx
 	
 	assert(loadLevelBackground());
 }
@@ -1676,7 +1679,7 @@ static point selectResetPoint() {
 
 static void reloadLevel(keys *const k, bool ignoreCheckpoints) {
 	assert(k);
-	if (gCurrLevel > 10)
+	if (gCurrLevel > 11)
 		gCurrLevel = 1;  // hack
 	
 	point rp;
@@ -1704,6 +1707,8 @@ static void reloadLevel(keys *const k, bool ignoreCheckpoints) {
 		file = "gpl/levels/level9.stl";
 	else if (gCurrLevel == 10)
 		file = "gpl/levels/level10.stl";
+	else if (gCurrLevel == 11)
+		file = "gpl/levels/level11.stl";
 	assert(loadLevel(file));
 	
 	if (!ignoreCheckpoints && rp.x != -1 && rp.y != -1) {
@@ -1735,6 +1740,7 @@ static void core(keys *const k) {
 	maybeScrollScreen();
 	processInput(k);
 	applyFrame();
+	cleanupWorldItems();  // prevent items with negative x from building up
 	applyGravity();
 	
 	clearScreen();
