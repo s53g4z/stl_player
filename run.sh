@@ -3,5 +3,5 @@
 if ! [ -f ./stl_player ]; then
 	./build.sh;
 fi
-./stl_player;
+vblank_mode=3 ./stl_player;
 exit $?;

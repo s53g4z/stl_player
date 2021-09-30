@@ -405,7 +405,7 @@ static void maybeScrollScreen() {
 		return;
 	
 	scrollTheScreen(player->x - SCREEN_WIDTH / 3);
-	//cleanupWorldItems();
+	//cleanupWorldItems();  // let cleanup be done by the caller
 }
 
 static void wiSwapTextures(WorldItem *const w) {
@@ -1588,8 +1588,8 @@ static void initialize() {
 	maybeInitgTextureNames();
 	
 	assert(populateGOTN());
-	assert(loadLevel("gpl/levels/level11.stl"));  // xxx
-	gCurrLevel = 11;  // hack for debugging xxx
+	assert(loadLevel("gpl/levels/level6.stl"));  // xxx
+	gCurrLevel = 6;  // hack for debugging xxx
 	
 	assert(loadLevelBackground());
 }
@@ -1677,39 +1677,28 @@ static point selectResetPoint() {
 	return ret;
 }
 
+static char *buildLevelString() {
+	const char *const prefix = "gpl/levels/level";
+	char *file = malloc(strlen(prefix) + strlen("99") + strlen(".stl") + 1);
+	strcpy(file, prefix);
+	sprintf(file + strlen(prefix), "%d", gCurrLevel);
+	strcat(file, ".stl");
+	fprintf(stderr, "DEBUG: loading %s\n", file);
+	return file;
+}
+
 static void reloadLevel(keys *const k, bool ignoreCheckpoints) {
 	assert(k);
-	if (gCurrLevel > 11)
+	if (gCurrLevel > 12)
 		gCurrLevel = 1;  // hack
 	
 	point rp;
 	if (!ignoreCheckpoints)
 		rp = selectResetPoint();
 	
-	const char *file = NULL;
-	if (gCurrLevel == 1)  // todo: make some string malloc()'ing behavior here
-		file = "gpl/levels/level1.stl";
-	else if (gCurrLevel == 2)
-		file = "gpl/levels/level2.stl";
-	else if (gCurrLevel == 3)
-		file = "gpl/levels/level3.stl";
-	else if (gCurrLevel == 4)
-		file = "gpl/levels/level4.stl";
-	else if (gCurrLevel == 5)
-		file = "gpl/levels/level5.stl";
-	else if (gCurrLevel == 6)
-		file = "gpl/levels/level6.stl";
-	else if (gCurrLevel == 7)
-		file = "gpl/levels/level7.stl";
-	else if (gCurrLevel == 8)
-		file = "gpl/levels/level8.stl";
-	else if (gCurrLevel == 9)
-		file = "gpl/levels/level9.stl";
-	else if (gCurrLevel == 10)
-		file = "gpl/levels/level10.stl";
-	else if (gCurrLevel == 11)
-		file = "gpl/levels/level11.stl";
-	assert(loadLevel(file));
+	char *filename = buildLevelString();
+	assert(loadLevel(filename));
+	free(filename);
 	
 	if (!ignoreCheckpoints && rp.x != -1 && rp.y != -1) {
 		if (rp.x - SCREEN_WIDTH / 3 > 0)
@@ -1737,7 +1726,7 @@ static void core(keys *const k) {
 	
 	verifyBuckets();
 	
-	maybeScrollScreen();
+	//maybeScrollScreen();
 	processInput(k);
 	applyFrame();
 	cleanupWorldItems();  // prevent items with negative x from building up
@@ -1759,6 +1748,16 @@ static void core(keys *const k) {
 
 // Entry point for initgl.
 bool draw(keys *const k) {
+	static struct timespec prevTime = { 0 };
+	struct timespec now = { 0 };
+	assert(TIME_UTC == timespec_get(&now, TIME_UTC));
+	if (now.tv_sec == prevTime.tv_sec &&
+		now.tv_nsec - prevTime.tv_nsec < 13900000) {
+		fprintf(stderr, "DEBUG: skipping a draw()\n");
+		return true;
+	}
+	prevTime = now;
+	
 	core(k);
 	return true;
 }
