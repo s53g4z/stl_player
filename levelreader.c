@@ -81,6 +81,7 @@ void stlPrinter(const stl *const lvl) {
 			case FLYINGSNOWBALL: str = "FLYINGSNOWBALL"; break;
 			case MONEY: str = "MONEY"; break;
 			case SPIKY: str = "SPIKY"; break;
+			case JUMPY: str = "JUMPY"; break;
 		}
 		fprintf(stderr, "\t%s at %d, %d\n", str, lvl->objects[i].x,
 			lvl->objects[i].y);
@@ -95,6 +96,7 @@ void stlPrinter(const stl *const lvl) {
 
 stl levelReader(const char *const filename) {
 	stl lvl = { 0 };
+	lvl.height = 15;  // some STLs don't include the level height
 	
 	ssize_t level_len_ss;
 	char *file = safe_read(filename, &level_len_ss);
@@ -239,10 +241,28 @@ static bool parse_paren(stl_obj *const obj,
 // marks the object as invalid and returns false.
 static bool scanForObjComponent(stl_obj *const obj, const char *x_or_y,
 	const char **section, size_t *const section_len) {
-	assert(*x_or_y == 'x' || *x_or_y == 'y');
+	assert(*x_or_y == 'x' || *x_or_y == 'y' ||
+		0 == strcmp(x_or_y, "stay-on-platform"));
+	
+	if (0 == strcmp(x_or_y, "stay-on-platform") && **section == ')')
+		return true;
 	
 	if (!parse_paren(obj, section, section_len))
 		return false;
+	
+	if (0 == strcmp(x_or_y, "stay-on-platform")) {
+		if (!nextWordIs(x_or_y, section, section_len))
+			return false;
+		if (*section_len < 3)
+			return false;
+		(*section) += 2;  // skip past #f or #t
+		(*section_len) -= 2;
+		if (*(*section)++ != ')')
+			return false;
+		(*section_len)--;
+		return true;
+	}
+	
 	int n;
 	if (!nextWordIs(x_or_y, section, section_len) ||
 		1 != sscanf(*section, "%d", &n)) {
@@ -277,6 +297,11 @@ static bool consumeRestOfObj(stl_obj *const obj, const enum stl_obj_type type,
 	if (!scanForObjComponent(obj, "y", section, section_len))
 		return false;
 	trimWhitespace(section, section_len);
+	
+	if (!scanForObjComponent(obj, "stay-on-platform", section, section_len))
+		return false;
+	trimWhitespace(section, section_len);
+	
 	(*section_len)--;
 	if (*(*section)++ != ')') {
 		obj->type = STL_INVALID_OBJ;
@@ -396,6 +421,8 @@ stl_obj getSTLobj(const char **section, size_t *const section_len) {
 		consumeRestOfObj(&obj, MONEY, section, section_len);
 	} else if (nextWordIs("spiky", section, section_len)) {
 		consumeRestOfObj(&obj, SPIKY, section, section_len);
+	} else if (nextWordIs("jumpy", section, section_len)) {
+		consumeRestOfObj(&obj, JUMPY, section, section_len);
 	}
 	return obj;
 }

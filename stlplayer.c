@@ -12,7 +12,7 @@ enum { LEFT, RIGHT, UP, DOWN,
 	GDIRECTION_HORIZ, GDIRECTION_VERT, GDIRECTION_BOTH, };
 typedef int GeneralDirection;
 
-static const int BUCKETS_SIZE = 500;
+static const int BUCKETS_SIZE = 250;
 static WorldItem **gBuckets;  // array of pointers to WorldItem (ll)
 static size_t gBuckets_len;
 
@@ -1585,8 +1585,8 @@ static void initialize() {
 	maybeInitgTextureNames();
 	
 	assert(populateGOTN());
-	assert(loadLevel("gpl/levels/level6.stl"));  // xxx
-	gCurrLevel = 6;  // hack for debugging xxx
+	assert(loadLevel("gpl/levels/level10.stl"));  // xxx
+	gCurrLevel = 10;  // hack for debugging xxx
 	
 	assert(loadLevelBackground());
 }
@@ -1676,7 +1676,7 @@ static point selectResetPoint() {
 
 static void reloadLevel(keys *const k, bool ignoreCheckpoints) {
 	assert(k);
-	if (gCurrLevel > 9)
+	if (gCurrLevel > 10)
 		gCurrLevel = 1;  // hack
 	
 	point rp;
@@ -1702,6 +1702,8 @@ static void reloadLevel(keys *const k, bool ignoreCheckpoints) {
 		file = "gpl/levels/level8.stl";
 	else if (gCurrLevel == 9)
 		file = "gpl/levels/level9.stl";
+	else if (gCurrLevel == 10)
+		file = "gpl/levels/level10.stl";
 	assert(loadLevel(file));
 	
 	if (!ignoreCheckpoints && rp.x != -1 && rp.y != -1) {
