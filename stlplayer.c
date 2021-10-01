@@ -1717,7 +1717,7 @@ static void verifyBuckets() {
 			assert(w->x / BUCKETS_SIZE == (ssize_t)i);
 }
 
-static void core(keys *const k) {
+static void core(keys *const k, bool enoughTimeHasPassed) {
 	static bool initialized = false;
 	if (!initialized) {
 		initialize();
@@ -1726,11 +1726,12 @@ static void core(keys *const k) {
 	
 	verifyBuckets();
 	
-	//maybeScrollScreen();
-	processInput(k);
-	applyFrame();
-	cleanupWorldItems();  // prevent items with negative x from building up
-	applyGravity();
+	if (enoughTimeHasPassed) {
+		processInput(k);
+		applyFrame();
+		cleanupWorldItems();  // prevent items with negative x from building up
+		applyGravity();
+	}
 	
 	clearScreen();
 	paintTM(lvl.backgroundtm);
@@ -1746,19 +1747,51 @@ static void core(keys *const k) {
 	}
 }
 
+const int32_t NSONE = 1000000000LL;  // nanoseconds in 1 second ( = 1 billion)
+
+// Like strcmp(), but for struct timespec.
+int tscmp(const struct timespec *const t1, const struct timespec *const t2) {
+	if (t1->tv_sec != t2->tv_sec)
+		return (int)t1->tv_sec - (int)t2->tv_sec;
+	else
+		return t1->tv_nsec - t2->tv_nsec;
+}
+
+// Increment t1 by ns.
+void tsadd(struct timespec *const t1, int32_t ns) {
+	assert(ns >= 0 && ns < NSONE);
+	if (t1->tv_nsec > NSONE - 1 - ns) {
+		t1->tv_sec++;
+		t1->tv_nsec += ns - NSONE;
+	} else
+		t1->tv_nsec += ns;
+	assert(t1->tv_nsec > 0 && t1->tv_nsec < NSONE && t1->tv_sec >= 0);
+}
+
 // Entry point for initgl.
 bool draw(keys *const k) {
-	static struct timespec prevTime = { 0 };
-	struct timespec now = { 0 };
+	static struct timespec then = { 0 }, now = { 0 };
 	assert(TIME_UTC == timespec_get(&now, TIME_UTC));
-	if (now.tv_sec == prevTime.tv_sec &&
-		now.tv_nsec - prevTime.tv_nsec < 13900000) {
-		fprintf(stderr, "DEBUG: skipping a draw()\n");
-		return true;
+	if (then.tv_sec == 0) {
+		then = now;
+		while (0 == tscmp(&then, &now)) {
+			fprintf(stderr, "DEBUG: bootstraping timer ...\n");
+			assert(TIME_UTC == timespec_get(&now, TIME_UTC));
+		}
 	}
-	prevTime = now;
 	
-	core(k);
+	bool physicsRanTimes = 0;
+	while (tscmp(&then, &now) < 0) {
+		core(k, true);
+		tsadd(&then, NSONE / 60);
+		physicsRanTimes++;
+	}
+	if (physicsRanTimes == 0) {
+		fprintf(stderr, "DEBUG: physics ran 0 times (so drawing dummy frame)\n");
+		core(k, false);
+	} else if (physicsRanTimes > 1)
+		fprintf(stderr, "DEBUG: physics ran %d times\n", physicsRanTimes);
+	
 	return true;
 }
 
