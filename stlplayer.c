@@ -1248,6 +1248,7 @@ static void maybeInitgTextureNames() {
 	gTextureNames[103] = gTextureNames[26];
 	gTextureNames[104] = gTextureNames[77];
 	gTextureNames[105] = gTextureNames[78];
+	initGLTextureNam(gTextureNames[79], "textures/pole.data", false, true);
 	initGLTextureNam(gTextureNames[106], "textures/background1.data", false, true);
 	initGLTextureNam(gTextureNames[107], "textures/background2.data", false, true);
 	initGLTextureNam(gTextureNames[108], "textures/background3.data", false, true);
@@ -1365,7 +1366,7 @@ static void loadLevelInteractives() {
 				(tileID >= 7 && tileID <= 9) || tileID == 24 || tileID == 25 ||
 				tileID == 122 || tileID == 123 || tileID == 201 ||
 				(tileID >= 106 && tileID <= 111) ||
-				(tileID >= 32 && tileID <= 34)) {
+				(tileID >= 32 && tileID <= 34) || tileID == 79) {
 				// for some reason, cloud tiles show up in interactive-tm
 				// 76 is a wave (water wave)
 				// 7, 8, 9 are snow layer for the ground
@@ -1373,6 +1374,7 @@ static void loadLevelInteractives() {
 				// 106-111 are a pile of snow
 				// 201 is "wave-trans-*.png"
 				// 32-34 are dark snow layer for the ground
+				// 79 is a pole
 			} else if (tileID > 0 &&
 				!bsearch(&tileID, ignored_tiles,
 					sizeof(ignored_tiles)/sizeof(uint8_t), sizeof(uint8_t),
@@ -1541,8 +1543,10 @@ static bool populateGOTN() {
 static bool loadLevelBackground() {
 	char *filename = lvl.background;
 	
-	if (strlen(filename) == 0)
+	if (strlen(filename) == 0) {
+		gTextureNames[256] = gTextureNames[0];
 		return true;
+	}
 	
 	// investigate taking off the filename extension
 	if (strlen(filename) > 4 &&
@@ -1588,8 +1592,8 @@ static void initialize() {
 	maybeInitgTextureNames();
 	
 	assert(populateGOTN());
-	assert(loadLevel("gpl/levels/level6.stl"));  // xxx
-	gCurrLevel = 6;  // hack for debugging xxx
+	assert(loadLevel("gpl/levels/level13.stl"));  // xxx
+	gCurrLevel = 13;  // hack for debugging xxx
 	
 	assert(loadLevelBackground());
 }
@@ -1689,7 +1693,7 @@ static char *buildLevelString() {
 
 static void reloadLevel(keys *const k, bool ignoreCheckpoints) {
 	assert(k);
-	if (gCurrLevel > 12)
+	if (gCurrLevel > 13)
 		gCurrLevel = 1;  // hack
 	
 	point rp;
@@ -1699,6 +1703,8 @@ static void reloadLevel(keys *const k, bool ignoreCheckpoints) {
 	char *filename = buildLevelString();
 	assert(loadLevel(filename));
 	free(filename);
+	
+	assert(loadLevelBackground());
 	
 	if (!ignoreCheckpoints && rp.x != -1 && rp.y != -1) {
 		if (rp.x - SCREEN_WIDTH / 3 > 0)
