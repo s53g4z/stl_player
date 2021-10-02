@@ -5,7 +5,7 @@
 
 static const int SCREEN_WIDTH = 640, SCREEN_HEIGHT = 480;
 static const int TILE_WIDTH = 32, TILE_HEIGHT = 32;
-static int gScrollOffset = 0, gCurrLevel = 1;
+static int gScrollOffset = 0, gCurrLevel = 1, gNDeaths = 0;
 
 typedef int Direction;
 enum { LEFT, RIGHT, UP, DOWN,
@@ -1587,15 +1587,45 @@ static bool loadLevelBackground() {
 	return glGetError() == GL_NO_ERROR;
 }
 
-static void initialize() {
+static uint32_t alphatiles[256];
+
+static void initialize_alphatile(char ch) {
+	const char *const prefix = "textures/alphabet/";
+	char *str = nnmalloc(strlen(prefix) + strlen("X.data") + 1);
+	strcpy(str, prefix);
+	str[strlen(prefix)] = ch;
+	str[strlen(prefix) + 1] = '\0';  // for strcat
+	strcat(str, ".data");
+	initGLTextureNam(alphatiles[(int)ch], str, false, true);
+	free(str);
+}
+
+static void initialize_alphatiles(void) {
+	glGenTextures(256, alphatiles);
+	
+	for (char ch = 'a'; ch <= 'z'; ch++) {
+		initialize_alphatile(ch);
+	}
+	for (char ch = '0'; ch <= '9'; ch++) {
+		initialize_alphatile(ch);
+	}
+	initGLTextureNam(alphatiles[255], "textures/alphabet/blue.data", false,
+		true);
+	
+	assert(glGetError() == GL_NO_ERROR);
+}
+
+static void initialize(void) {
 	initialize_prgm();
 	maybeInitgTextureNames();
 	
 	assert(populateGOTN());
-	assert(loadLevel("gpl/levels/level13.stl"));  // xxx
-	gCurrLevel = 13;  // hack for debugging xxx
+	assert(loadLevel("gpl/levels/level14.stl"));  // xxx
+	gCurrLevel = 14;  // hack for debugging xxx
 	
 	assert(loadLevelBackground());
+	
+	initialize_alphatiles();
 }
 
 // Return true if w is off-screen.
@@ -1683,9 +1713,11 @@ static point selectResetPoint() {
 
 static char *buildLevelString() {
 	const char *const prefix = "gpl/levels/level";
-	char *file = malloc(strlen(prefix) + strlen("99") + strlen(".stl") + 1);
+	char *file = malloc(strlen(prefix) + intAsStrLen(gCurrLevel) +
+		strlen(".stl") + 1);
 	strcpy(file, prefix);
 	sprintf(file + strlen(prefix), "%d", gCurrLevel);
+	file[strlen(prefix) + intAsStrLen(gCurrLevel)] = '\0';
 	strcat(file, ".stl");
 	fprintf(stderr, "DEBUG: loading %s\n", file);
 	return file;
@@ -1693,7 +1725,7 @@ static char *buildLevelString() {
 
 static void reloadLevel(keys *const k, bool ignoreCheckpoints) {
 	assert(k);
-	if (gCurrLevel > 13)
+	if (gCurrLevel > 14)
 		gCurrLevel = 1;  // hack
 	
 	point rp;
@@ -1723,7 +1755,89 @@ static void verifyBuckets() {
 			assert(w->x / BUCKETS_SIZE == (ssize_t)i);
 }
 
-static void core(keys *const k, bool enoughTimeHasPassed) {
+static bool displayingMessage = false;
+
+// Return the number of ch encountered in msg. todo move to util.c
+static size_t count(const char *msg, const char ch) {
+	size_t n = 0;
+	while (*msg)
+		if (*msg++ == ch)
+			n++;
+	return n;
+}
+
+// Given a msg of lines, return the length of the longest one. todo move to util.c
+static size_t longestLine(const char *msg) {
+	size_t longest = 0;
+	size_t current = 0;
+	for (; *msg; msg++) {
+		if (*msg == '\n') {
+			if (current > longest)
+				longest = current;
+			current = 0;
+		} else
+			current++;
+	}
+	if (current > longest)
+		longest = current;
+	return longest;
+}
+
+static void displayMessage(const char *msg) {
+	size_t msg_width = longestLine(msg) * TILE_WIDTH / 2;
+	size_t msg_height = (count(msg, '\n') + 1) * TILE_HEIGHT / 2;
+	
+	size_t xpos = 0;
+	if (msg_width < (size_t)SCREEN_WIDTH)
+		xpos = (SCREEN_WIDTH - msg_width) / 2;
+	size_t ypos = 0;
+	if (msg_height < (size_t)SCREEN_HEIGHT)
+		ypos = (SCREEN_HEIGHT - msg_height) / 2;
+	size_t xpos_orig = xpos;  //, ypos_orig = ypos;
+	
+	for (; *msg; msg++) {
+		const float vertices[] = {
+			xpos,				ypos,				1,
+			xpos,				ypos + TILE_HEIGHT / 2,	1,
+			xpos + TILE_WIDTH / 2,	ypos,				1,
+			xpos + TILE_WIDTH / 2,	ypos + TILE_HEIGHT / 2,	1,
+		};
+		if ((*msg >= 'a' && *msg <= 'z') || (*msg >= '0' && *msg <= '9')) {
+			drawGLvertices(vertices, alphatiles[255]);
+			drawGLvertices(vertices, alphatiles[(int)*msg]);
+			xpos += TILE_WIDTH / 2;
+		} else if (*msg == ' ') {
+			drawGLvertices(vertices, alphatiles[255]);
+			xpos += TILE_WIDTH / 2;
+		} else if (*msg == '\n') {
+			xpos = xpos_orig;
+			ypos += TILE_HEIGHT / 2;
+		} else
+			fprintf(stderr, "DEBUG: unimplemented alphatile character '%c'\n",
+				*msg);
+	}
+}
+
+static void displayDeathMessage() {
+	displayMessage("you died\nplease press enter");
+}
+
+static void displayPassMessage() {
+	char *prefix = "level complete\n";
+	char *suffix = " deaths\nplease press enter";
+	char *msg = nnmalloc(strlen(prefix) + intAsStrLen(gNDeaths) +
+		strlen(suffix) + 1);
+	strcpy(msg, prefix);
+	sprintf(msg + strlen(prefix), "%d", gNDeaths);
+	msg[strlen(prefix) + intAsStrLen(gNDeaths)] = '\0';
+	strcat(msg, suffix);
+	
+	displayMessage(msg);
+	
+	free(msg);
+}
+
+static void core(keys *const k, bool runPhysics) {
 	static bool initialized = false;
 	if (!initialized) {
 		initialize();
@@ -1732,7 +1846,7 @@ static void core(keys *const k, bool enoughTimeHasPassed) {
 	
 	verifyBuckets();
 	
-	if (enoughTimeHasPassed) {
+	if (runPhysics) {
 		processInput(k);
 		applyFrame();
 		cleanupWorldItems();  // prevent items with negative x from building up
@@ -1746,10 +1860,23 @@ static void core(keys *const k, bool enoughTimeHasPassed) {
 	drawWorldItems();
 	
 	if (player->type == STL_PLAYER_DEAD) {  // reload the current level
-		reloadLevel(k, false);
+		displayDeathMessage();
+		displayingMessage = true;
+		if (k->keyEnter) {
+			displayingMessage = false;
+			if (gNDeaths < 99999)
+				gNDeaths++;
+			reloadLevel(k, false);
+		}
 	} else if (player->type == STL_PLAYER_ASCENDED) {  // reload the next level
-		gCurrLevel++;
-		reloadLevel(k, true);
+		displayPassMessage();
+		displayingMessage = true;
+		if (k->keyEnter) {
+			displayingMessage = false;
+			gCurrLevel++;
+			gNDeaths = 0;
+			reloadLevel(k, true);
+		}
 	}
 }
 
@@ -1788,7 +1915,7 @@ bool draw(keys *const k) {
 	
 	bool physicsRanTimes = 0;
 	while (tscmp(&then, &now) < 0) {
-		core(k, true);
+		core(k, true && !displayingMessage);
 		tsadd(&then, NSONE / 60);
 		physicsRanTimes++;
 	}
