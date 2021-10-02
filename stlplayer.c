@@ -1032,10 +1032,12 @@ static void fnspiky(WorldItem *const self) {
 static void fnflyingsnowball(WorldItem *const self) {
 	static int totalDistMoved = 0;
 	
-	int moveY = canMoveTo(self, GDIRECTION_VERT);
-	if (moveY == 0 || totalDistMoved >= 4 * TILE_HEIGHT) {
+	const int speedYOrig = self->speedY;
+	const int moveY = canMoveTo(self, GDIRECTION_VERT);
+	if (moveY == 0 || totalDistMoved >= 3 * TILE_HEIGHT) {
 		assert(self->speedY != INT_MIN);
-		self->speedY *= -1;  // for next time
+		if (self->speedY == speedYOrig)
+			self->speedY *= -1;  // for next time
 		totalDistMoved = 0;
 	} else {
 		self->y += moveY;
@@ -1258,6 +1260,11 @@ static void maybeInitgTextureNames() {
 	initGLTextureNam(gTextureNames[112], "textures/transparent2.data", false, true);
 	initGLTextureNam(gTextureNames[113], "textures/snow20.data", false, false);
 	initGLTextureNam(gTextureNames[114], "textures/snow21.data", false, false);
+	
+	gTextureNames[119] = gTextureNames[36];
+	gTextureNames[120] = gTextureNames[36];
+	gTextureNames[121] = gTextureNames[36];
+	
 	initGLTextureNam(gTextureNames[122], "textures/snowbg1.data", false, true);
 	initGLTextureNam(gTextureNames[123], "textures/snowbg2.data", false, true);
 	initGLTextureNam(gTextureNames[124], "textures/snowbg3.data", false, true);
@@ -1340,7 +1347,7 @@ static void loadLevelInteractives() {
 				10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 25,
 				27, 28, 29, 30, 31, 35, 36, 37, 38, 39, 40, 41, 42, 43, 47, 48,
 				49, 50, 51, 52, 57, 58, 59, 60, 61, 84, 102, 103, 105, 113, 114,
-				124, 125, 128,
+				119, 120, 121, 124, 125, 128,
 			};
 			if (bsearch(&tileID, blocks, sizeof(blocks)/sizeof(uint8_t), 
 				sizeof(uint8_t), cmpForUint8_t))
@@ -1609,7 +1616,9 @@ static void initialize_alphatiles(void) {
 	for (char ch = '0'; ch <= '9'; ch++) {
 		initialize_alphatile(ch);
 	}
-	initGLTextureNam(alphatiles[255], "textures/alphabet/blue.data", false,
+	initGLTextureNam(alphatiles[255], "textures/alphabet/red.data", false,
+		true);
+	initGLTextureNam(alphatiles[254], "textures/alphabet/green.data", false,
 		true);
 	
 	assert(glGetError() == GL_NO_ERROR);
@@ -1620,8 +1629,8 @@ static void initialize(void) {
 	maybeInitgTextureNames();
 	
 	assert(populateGOTN());
-	assert(loadLevel("gpl/levels/level14.stl"));  // xxx
-	gCurrLevel = 14;  // hack for debugging xxx
+	assert(loadLevel("gpl/levels/level17.stl"));  // xxx
+	gCurrLevel = 17;  // hack for debugging xxx
 	
 	assert(loadLevelBackground());
 	
@@ -1725,7 +1734,7 @@ static char *buildLevelString() {
 
 static void reloadLevel(keys *const k, bool ignoreCheckpoints) {
 	assert(k);
-	if (gCurrLevel > 14)
+	if (gCurrLevel > 17)
 		gCurrLevel = 1;  // hack
 	
 	point rp;
@@ -1783,7 +1792,7 @@ static size_t longestLine(const char *msg) {
 	return longest;
 }
 
-static void displayMessage(const char *msg) {
+static void displayMessage(const char *msg, uint32_t backgroundID) {
 	size_t msg_width = longestLine(msg) * TILE_WIDTH / 2;
 	size_t msg_height = (count(msg, '\n') + 1) * TILE_HEIGHT / 2;
 	
@@ -1803,11 +1812,11 @@ static void displayMessage(const char *msg) {
 			xpos + TILE_WIDTH / 2,	ypos + TILE_HEIGHT / 2,	1,
 		};
 		if ((*msg >= 'a' && *msg <= 'z') || (*msg >= '0' && *msg <= '9')) {
-			drawGLvertices(vertices, alphatiles[255]);
+			drawGLvertices(vertices, alphatiles[backgroundID]);
 			drawGLvertices(vertices, alphatiles[(int)*msg]);
 			xpos += TILE_WIDTH / 2;
 		} else if (*msg == ' ') {
-			drawGLvertices(vertices, alphatiles[255]);
+			drawGLvertices(vertices, alphatiles[backgroundID]);
 			xpos += TILE_WIDTH / 2;
 		} else if (*msg == '\n') {
 			xpos = xpos_orig;
@@ -1819,7 +1828,7 @@ static void displayMessage(const char *msg) {
 }
 
 static void displayDeathMessage() {
-	displayMessage("you died\nplease press enter");
+	displayMessage("you died\nplease press enter", 255);
 }
 
 static void displayPassMessage() {
@@ -1832,7 +1841,7 @@ static void displayPassMessage() {
 	msg[strlen(prefix) + intAsStrLen(gNDeaths)] = '\0';
 	strcat(msg, suffix);
 	
-	displayMessage(msg);
+	displayMessage(msg, 254);
 	
 	free(msg);
 }
@@ -1911,6 +1920,7 @@ bool draw(keys *const k) {
 			fprintf(stderr, "DEBUG: bootstraping timer ...\n");
 			assert(TIME_UTC == timespec_get(&now, TIME_UTC));
 		}
+		srand((uint32_t)now.tv_nsec);
 	}
 	
 	bool physicsRanTimes = 0;
@@ -1918,6 +1928,13 @@ bool draw(keys *const k) {
 		core(k, true && !displayingMessage);
 		tsadd(&then, NSONE / 60);
 		physicsRanTimes++;
+		
+		if (physicsRanTimes >= 5)  // system is too slow
+			break;
+		
+		// prevent bouncing between drawing a dummy frame and running twice
+		if (rand() > (RAND_MAX / 10 * 9))  // randomly skip [2nd,+inf) draws
+			break;
 	}
 	if (physicsRanTimes == 0) {
 		fprintf(stderr, "DEBUG: physics ran 0 times (so drawing dummy frame)\n");
