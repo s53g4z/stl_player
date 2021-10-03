@@ -19,15 +19,16 @@ static size_t gBuckets_len;
 static stl lvl;
 
 static Player *player;
+static WorldItem *gPlayerCarry;
 
-static const float MRICEBLOCK_KICKSPEED = 10;
-static const float PLAYER_BOUNCE_SPEED = -10;
-static const float PLAYER_JUMP_SPEED = -10;
-static const float PLAYER_RUN_SPEED = 7;
-static const float BOUNCINGSNOWBALL_JUMP_SPEED = -9;
+static const float MRICEBLOCK_KICKSPEED = 8;
+static const float PLAYER_BOUNCE_SPEED = -8;
+static const float PLAYER_JUMP_SPEED = -8;
+static const float PLAYER_RUN_SPEED = 6;
+static const float BOUNCINGSNOWBALL_JUMP_SPEED = -7;
 static const float FLYINGSNOWBALL_HOVER_SPEED = -2;
 static float BADGUY_X_SPEED = -2;
-static float JUMPY_JUMP_SPEED = -10;
+static float JUMPY_JUMP_SPEED = -8;
 
 static const uint8_t ignored_tiles[] = {
 	6, 126, 133,
@@ -344,16 +345,6 @@ static int canMoveTo(WorldItem *const w, const GeneralDirection dir) {
 		return canMoveY(w);
 }
 
-static void player_toggle_size() {
-	if (player->height == 32) {
-		player->height = 64;
-		player->y -= 32;
-	} else {
-		player->height = 32;
-		player->y += 32;
-	}
-}
-
 // Free w->next in the list.
 static void delNodeAfter(WorldItem *w) {
 	WorldItem *trash = w->next;
@@ -519,16 +510,9 @@ static void processInput(const keys *const k) {
 	// 0 means not carrying, 1 means could carry, 2 means carrying something
 	if (k->keyCTRL && player->state == 0) {
 		player->state = 1;
-	} else if (!k->keyCTRL)
+	} else if (!k->keyCTRL) {
 		player->state = 0;
-	
-	// debugging
-	if (k->keyE) {
-		player_toggle_size();
-		if (player->speedX == PLAYER_RUN_SPEED) 
-			player->speedX *= 2;
-		else
-			player->speedX = PLAYER_RUN_SPEED;
+		gPlayerCarry = 0;
 	}
 	
 	maybeScrollScreen();
@@ -543,7 +527,7 @@ static void applyGravity() {
 			if (moveY == 0)
 				curr->speedY = 1;
 			else {
-				curr->speedY += 0.333;
+				curr->speedY += 0.25;
 				curr->y += moveY;
 			}
 		}
@@ -651,12 +635,25 @@ static void playerKicks(WorldItem *coll) {
 	}
 }
 
+static void killPlayer() {
+	fprintf(stderr, "You died.\n");
+	player->type = STL_PLAYER_DEAD;
+	gPlayerCarry = NULL;
+}
+
 // Callback for player frame.
 static void fnpl(WorldItem *self) {
 	if (hitScreenBottom(self)) {
-		fprintf(stderr, "You died.\n");
-		self->type = STL_PLAYER_DEAD;
+		killPlayer();
 	}
+	if (gPlayerCarry) {
+		if (self->speedX < 0)
+			setX(gPlayerCarry, self->x - gPlayerCarry->width);
+		else if (self->speedX > 0)
+			setX(gPlayerCarry, self->x + self->width);
+		gPlayerCarry->y = self->y;
+	}
+
 	size_t collisions_len;
 	WorldItem **colls = isCollidingWith(self, &collisions_len, GDIRECTION_BOTH);
 	for (size_t i = 0; i < collisions_len; i++) {
@@ -664,13 +661,12 @@ static void fnpl(WorldItem *self) {
 		int y = colls[i]->y / TILE_HEIGHT;
 		switch (colls[i]->type) {
 			case SPIKY:
-				fprintf(stderr, "You died.\n");
-				self->type = STL_PLAYER_DEAD;
+				killPlayer();
 				break;
 			case MRICEBLOCK:
 				if (self->speedY >= 0)
 					self->speedY = PLAYER_BOUNCE_SPEED;
-				if (bottomOf(self) + 1 == topOf(colls[i])) {
+				if (bottomOf(self) - topOf(colls[i]) < (TILE_HEIGHT - 2) / 3) {
 					// todo have a fixed set of texnams to index into
 					colls[i]->type = STL_DEAD_MRICEBLOCK;
 					//glDeleteTextures(1, &colls[i]->texnam);  // todo: turn
@@ -682,11 +678,8 @@ static void fnpl(WorldItem *self) {
 					if (colls[i]->speedX > 0) {  // going right
 						wiSwapTextures(colls[i]);
 					}
-				} else if (true || leftOf(self) - 1 == rightOf(colls[i]) ||
-					rightOf(self) + 1 == leftOf(colls[i])) {  // xxx
-					fprintf(stderr, "You died.\n");
-					self->type = STL_PLAYER_DEAD;
-				}
+				} else
+					killPlayer();
 				break;
 			case STL_DEAD_MRICEBLOCK:  // just sitting there
 				if (self->state == 0) {
@@ -698,8 +691,9 @@ static void fnpl(WorldItem *self) {
 						setX(colls[i], self->x + self->width / 2);
 					else if (self->speedX < 0)  // player is going left
 						setX(colls[i], self->x - self->width / 2);
-					colls[i]->y = self->y - 5;  // arbitrary
-					//self->state = 2;
+					colls[i]->y = self->y;
+					self->state = 2;
+					gPlayerCarry = colls[i];
 				}
 				break;
 			case STL_KICKED_MRICEBLOCK:
@@ -900,12 +894,41 @@ static void iceDestroyObstacles(WorldItem *const self) {
 	free(colls);
 }
 
+static void deadIceOnPlayerHandleCollisions(void) {
+	size_t colls_len;
+	WorldItem **colls = isCollidingWith(gPlayerCarry, &colls_len,
+		GDIRECTION_BOTH);
+	for (size_t i = 0; i < colls_len; i++) {
+		switch (colls[i]->type) {
+			case SNOWBALL:
+			case STL_KICKED_MRICEBLOCK:
+			case STL_DEAD_MRICEBLOCK:
+			case MRICEBLOCK:
+			case STL_BOMB:
+			case STALACTITE:
+			case BOUNCINGSNOWBALL:
+			case FLYINGSNOWBALL:
+			case MONEY:
+			case JUMPY:
+				gPlayerCarry->type = STL_DEAD;
+				colls[i]->type = STL_DEAD;
+		}
+	}
+	if (gPlayerCarry->type == STL_DEAD) {
+		player->state = 0;
+		gPlayerCarry = NULL;
+	}
+}
+
 static void fniceblock(WorldItem *const self) {
 	if (hitScreenBottom(self)) {
 		self->type = STL_DEAD;
 		return;
 	}
 	if (self->type == STL_DEAD_MRICEBLOCK) {
+		if (self == gPlayerCarry) {
+			deadIceOnPlayerHandleCollisions();
+		}
 		// don't move around
 		return;
 	} else if (self->type == STL_KICKED_MRICEBLOCK) {
@@ -1397,47 +1420,47 @@ static void loadLevelObjects() {
 		stl_obj *obj = &lvl.objects[i];
 		if (obj->type == SNOWBALL) {
 			w = worldItem_new(SNOWBALL, obj->x, obj->y - 1,
-				TILE_WIDTH, TILE_HEIGHT, BADGUY_X_SPEED, 1, true,
+				TILE_WIDTH - 2, TILE_HEIGHT - 2, BADGUY_X_SPEED, 1, true,
 				NULL, fnsnowball, true, true, false);
 			w->texnam = gObjTextureNames[STL_SNOWBALL_TEXTURE_LEFT];
 			w->texnam2 = gObjTextureNames[STL_SNOWBALL_TEXTURE_RIGHT];
 		} else if (obj->type == MRICEBLOCK) {
 			w = worldItem_new(MRICEBLOCK, obj->x, obj->y - 1,
-				TILE_WIDTH, TILE_HEIGHT, BADGUY_X_SPEED, 1, true,
+				TILE_WIDTH - 2, TILE_HEIGHT - 2, BADGUY_X_SPEED, 1, true,
 				"textures/mriceblock.data", fniceblock, true, true, false);
 		} else if (obj->type == BOUNCINGSNOWBALL) {
 			w = worldItem_new(BOUNCINGSNOWBALL, obj->x, obj->y - 1,
-				TILE_WIDTH, TILE_HEIGHT, BADGUY_X_SPEED, 1, true,
+				TILE_WIDTH - 2, TILE_HEIGHT - 2, BADGUY_X_SPEED, 1, true,
 				NULL, fnbouncingsnowball, true, false, false);
 			w->texnam = gObjTextureNames[STL_BOUNCINGSNOWBALL_TEXTURE_LEFT];
 			w->texnam2 = gObjTextureNames[STL_BOUNCINGSNOWBALL_TEXTURE_RIGHT];
 		} else if (obj->type == STL_BOMB) {
 			w = worldItem_new(STL_BOMB, obj->x, obj->y - 1,
-				TILE_WIDTH, TILE_HEIGHT, BADGUY_X_SPEED, 1, true, NULL, fnbomb, true, true,
-				true);
+				TILE_WIDTH - 2, TILE_HEIGHT - 2, BADGUY_X_SPEED, 1, true, NULL,
+				fnbomb, true, true, true);
 			w->texnam = gObjTextureNames[STL_BOMB_TEXTURE_LEFT];
 			w->texnam2 = gObjTextureNames[STL_BOMB_TEXTURE_RIGHT];
 		} else if (obj->type == SPIKY) {
 			w = worldItem_new(SPIKY, obj->x, obj->y - 1,
-				TILE_WIDTH, TILE_HEIGHT, BADGUY_X_SPEED, 1, true, NULL, fnspiky, true, true,
-				true);
+				TILE_WIDTH - 2, TILE_HEIGHT - 2, BADGUY_X_SPEED, 1, true, NULL,
+				fnspiky, true, true, true);
 			w->texnam = gObjTextureNames[STL_SPIKY_TEXTURE_LEFT];
 			w->texnam2 = gObjTextureNames[STL_SPIKY_TEXTURE_RIGHT];
 		} else if (obj->type == MONEY || obj->type == JUMPY) {
 			w = worldItem_new(JUMPY, obj->x, obj->y - 1,
-				TILE_WIDTH, TILE_HEIGHT, 0, JUMPY_JUMP_SPEED, true, NULL,
+				TILE_WIDTH - 2, TILE_HEIGHT - 2, 0, JUMPY_JUMP_SPEED, true, NULL,
 				fnjumpy, false, false, false);
 			w->texnam = gObjTextureNames[STL_JUMPY_TEXTURE];
 		} else if (obj->type == FLYINGSNOWBALL) {
 			w = worldItem_new(FLYINGSNOWBALL, obj->x, obj->y - 1,
-				TILE_WIDTH, TILE_HEIGHT, 0, FLYINGSNOWBALL_HOVER_SPEED, false,
-				NULL, fnflyingsnowball, false, false, false);
+				TILE_WIDTH - 2, TILE_HEIGHT - 2, 0, FLYINGSNOWBALL_HOVER_SPEED, 
+				false, NULL, fnflyingsnowball, false, false, false);
 			w->texnam = gObjTextureNames[STL_FLYINGSNOWBALL_TEXTURE_LEFT];
 			w->texnam = gObjTextureNames[STL_FLYINGSNOWBALL_TEXTURE_RIGHT];
 		} else if (obj->type == STALACTITE) {
 			w = worldItem_new(STALACTITE, obj->x, obj->y - 1,
-				TILE_WIDTH, TILE_HEIGHT, 0, 2, false, NULL, fnstalactite, false,
-				false, false);
+				TILE_WIDTH - 2, TILE_HEIGHT - 2, 0, 2, false, NULL,
+				fnstalactite, false, false, false);
 			w->texnam = gObjTextureNames[STL_STALACTITE_TEXTURE];
 		} else {
 			fprintf(stderr, "WARN: skipping the load of an obj!\n");
@@ -1490,7 +1513,8 @@ static bool loadLevel(const char *const level_filename) {
 	
 	initBuckets();
 	player = worldItem_new(STL_PLAYER, lvl.start_pos_x, lvl.start_pos_y,
-		30, 30, 0, 1, true, "textures/tux.data", fnpl, true, false, true);
+		TILE_WIDTH / 3 * 2, TILE_HEIGHT - 2, 0, 1, true, "textures/tux.data",
+		fnpl, true, false, true);
 	addToBuckets(player);
 	
 	loadLevelObjects();
@@ -1629,8 +1653,8 @@ static void initialize(void) {
 	maybeInitgTextureNames();
 	
 	assert(populateGOTN());
-	assert(loadLevel("gpl/levels/level17.stl"));  // xxx
-	gCurrLevel = 17;  // hack for debugging xxx
+	assert(loadLevel("gpl/levels/level18.stl"));  // xxx
+	gCurrLevel = 18;  // hack for debugging xxx
 	
 	assert(loadLevelBackground());
 	
@@ -1734,7 +1758,7 @@ static char *buildLevelString() {
 
 static void reloadLevel(keys *const k, bool ignoreCheckpoints) {
 	assert(k);
-	if (gCurrLevel > 17)
+	if (gCurrLevel > 18)
 		gCurrLevel = 1;  // hack
 	
 	point rp;
@@ -1929,12 +1953,17 @@ bool draw(keys *const k) {
 		tsadd(&then, NSONE / 60);
 		physicsRanTimes++;
 		
-		if (physicsRanTimes >= 5)  // system is too slow
+		if (physicsRanTimes >= 5) {  // system is too slow
+			then = now;
 			break;
+		}
 		
 		// prevent bouncing between drawing a dummy frame and running twice
-		if (rand() > (RAND_MAX / 10 * 9))  // randomly skip [2nd,+inf) draws
+		if (rand() > (RAND_MAX / 3 * 2)) {  // randomly skip [2nd,+inf) draws
+			if (physicsRanTimes > 1)
+				fprintf(stderr, "DEBUG: randomly skipping a physics run\n");
 			break;
+		}
 	}
 	if (physicsRanTimes == 0) {
 		fprintf(stderr, "DEBUG: physics ran 0 times (so drawing dummy frame)\n");

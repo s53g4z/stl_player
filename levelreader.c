@@ -46,6 +46,14 @@ stl lrFailCleanup(const char *const level_orig, stl *lvl) {
 	free(lvl->backgroundtm);
 	free(lvl->foregroundtm);
 	free(lvl->objects);
+	
+	point *p = lvl->reset_points;
+	while (p) {
+		point *next = p->next;
+		free(p);
+		p = next;
+	}
+	
 	memset(lvl, 0xe5, sizeof(*lvl));
 	
 	lvl->hdr = false;
@@ -89,6 +97,11 @@ void stlPrinter(const stl *const lvl) {
 	fprintf(stderr, "}\n");
 	fprintf(stderr, "objects_len/cap: %lu/%lu\n", lvl->objects_len,
 		lvl->objects_cap);
+	point *p = lvl->reset_points;
+	while (p) {
+		fprintf(stderr, "reset point: %d, %d\n", p->x, p->y);
+		p = p->next;
+	}
 	
 	if (lvl->height != 15)
 		fprintf(stderr, "WARN: lvl.height unexpected (%d)\n", lvl->height);
