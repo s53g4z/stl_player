@@ -641,6 +641,118 @@ static void killPlayer() {
 	gPlayerCarry = NULL;
 }
 
+// Turn around a WorldItem (that has two texnams). Relatively cheap fn.
+static void turnAround(WorldItem *const self) {
+	assert(self->speedX != INT_MIN);
+	self->speedX *= -1;  // toggle horizontal direction
+	wiSwapTextures(self);
+}
+
+// for patrol or smthn
+static void maybeTurnAround(WorldItem *const self) {
+	if (self->speedX == 0)
+		return;
+	int origX = self->x;
+	// calculate hypothetical move
+	if (self->speedX < 0)  // going left
+		setX(self, self->x - self->width);
+	else  // going right
+		setX(self, self->x + self->width);
+
+	size_t collisions_len;
+	WorldItem **colls = isCollidingWith(self, &collisions_len, GDIRECTION_VERT);
+	bool onSolidSurface = false;
+	for (size_t i = 0; i < collisions_len; i++) {
+		if (colls[i]->type == STL_COIN)
+			continue;  // coins are not a solid surface
+		if (bottomOf(self) + 1 == topOf(colls[i])) {
+			onSolidSurface = true;
+			break;
+		}
+	}
+	free(colls);
+	if (!onSolidSurface)  // if gonna fall a hypothetical move, turn around
+		turnAround(self);
+	setX(self, origX);
+}
+
+// Callback for bot frame. Move the bot around horizontally.
+static void fnbot(WorldItem *const self) {
+	if (self->patrol)
+		maybeTurnAround(self);  // patrol
+
+	int moveX = canMoveTo(self, GDIRECTION_HORIZ);
+	if (moveX == 0) {
+		turnAround(self);
+	}
+	setX(self, self->x + moveX);
+}
+
+static void fnsnowball(WorldItem *const self) {
+	if (hitScreenBottom(self)) {
+		self->type = STL_DEAD;
+		return;
+	}
+	fnbot(self);
+}
+
+static void fnbouncingsnowball(WorldItem *const self) {
+	if (hitScreenBottom(self)) {
+		self->type = STL_DEAD;
+		return;
+	}
+	fnbot(self);
+	size_t collisions_len;
+	WorldItem **colls = isCollidingWith(self, &collisions_len, GDIRECTION_BOTH);
+	for (size_t i = 0; i < collisions_len; i++) {
+		const WorldItem *const coll = colls[i];
+		if (coll->type == STL_COIN)
+			continue;  // coins are not solid blocks to bounce off
+		if (bottomOf(self) + 1 == topOf(coll)) {  // bounce off surface
+			self->speedY = BOUNCINGSNOWBALL_JUMP_SPEED;
+			break;
+		}
+	}
+	free(colls);
+}
+
+static void fnspiky(WorldItem *const self) {
+	if (hitScreenBottom(self)) {
+		self->type = STL_DEAD;
+		return;
+	}
+	fnbot(self);
+}
+
+// Return a new WorldItem bouncingsnowball.
+static WorldItem *worldItem_new_bsnowball(int x, int y) {
+	WorldItem *bs = worldItem_new(BOUNCINGSNOWBALL, x, y - 1,
+		TILE_WIDTH - 2, TILE_HEIGHT - 2, BADGUY_X_SPEED, 1, true,
+		NULL, fnbouncingsnowball, true, false, false);
+	bs->texnam = gObjTextureNames[STL_BOUNCINGSNOWBALL_TEXTURE_LEFT];
+	bs->texnam2 = gObjTextureNames[STL_BOUNCINGSNOWBALL_TEXTURE_RIGHT];
+	return bs;
+}
+
+// Return a new WorldItem snowball.
+static WorldItem *worldItem_new_snowball(int x, int y, bool patrol) {
+	WorldItem *w = worldItem_new(SNOWBALL, x, y - 1,
+		TILE_WIDTH - 2, TILE_HEIGHT - 2, BADGUY_X_SPEED, 1, true,
+		NULL, fnsnowball, true, patrol, false);
+	w->texnam = gObjTextureNames[STL_SNOWBALL_TEXTURE_LEFT];
+	w->texnam2 = gObjTextureNames[STL_SNOWBALL_TEXTURE_RIGHT];
+	return w;
+}
+
+static WorldItem *worldItem_new_spiky(int x, int y, bool patrol) {
+	WorldItem *spiky = worldItem_new(SPIKY, x, y - 1,
+		TILE_WIDTH - 2, TILE_HEIGHT - 2, BADGUY_X_SPEED, 1, true, NULL,
+		fnspiky, true, patrol, true);
+	spiky->texnam = gObjTextureNames[STL_SPIKY_TEXTURE_LEFT];
+	spiky->texnam2 = gObjTextureNames[STL_SPIKY_TEXTURE_RIGHT];
+	return spiky;
+}
+
 // Callback for player frame.
 static void fnpl(WorldItem *self) {
 	if (hitScreenBottom(self)) {
@@ -745,12 +857,45 @@ static void fnpl(WorldItem *self) {
 				if (colls[i]->state == 1 &&  // bonus is active
 					topOf(self) - 1 == bottomOf(colls[i])) {
 					colls[i]->state = 0;  // deactivate (b/c one use only)
+					lvl.interactivetm[y][x] = 84;
 					lvl.interactivetm[y - 1][x] = 44;
 					addToBuckets(worldItem_new_block(
 						STL_COIN,
 						colls[i]->x,
 						colls[i]->y - TILE_HEIGHT
 					));  // hairy! xxx
+				} else if (colls[i]->state == 2 &&  // bonus egg
+					topOf(self) - 1 == bottomOf(colls[i])) {
+					colls[i]->state = 0;
+					lvl.interactivetm[y][x] = 84;
+					WorldItem *snowball = worldItem_new_snowball(
+						colls[i]->x,
+						colls[i]->y - TILE_HEIGHT,
+						false
+					);
+					turnAround(snowball);
+					addToBuckets(snowball);  // hairy! xxx
+				} else if (colls[i]->state == 3 &&  // bonus star
+					topOf(self) - 1 == bottomOf(colls[i])) {
+					colls[i]->state = 0;
+					lvl.interactivetm[y][x] = 84;
+					WorldItem *bsnowball = worldItem_new_bsnowball(
+						colls[i]->x,
+						colls[i]->y - TILE_HEIGHT
+					);
+					turnAround(bsnowball);  // face right
+					addToBuckets(bsnowball);  // hairy! xxx
+				} else if (colls[i]->state == 4 &&  // bonus 1up
+					topOf(self) - 1 == bottomOf(colls[i])) {
+					colls[i]->state = 0;
+					lvl.interactivetm[y][x] = 84;
+					WorldItem *spiky = worldItem_new_spiky(
+						colls[i]->x,
+						colls[i]->y - TILE_HEIGHT,
+						false
+					);
+					turnAround(spiky);  // face right
+					addToBuckets(spiky);  // hairy! xxx
 				}
 				break;
 			case STL_BRICK:
@@ -783,81 +928,6 @@ static void fnpl(WorldItem *self) {
 			//default:
 				//fprintf(stderr, "WARN: fnpl() unhandled case\n");
 				//break;
-		}
-	}
-	free(colls);
-}
-
-// Turn around a WorldItem (that has two texnams). Relatively cheap fn.
-static void turnAround(WorldItem *const self) {
-	assert(self->speedX != INT_MIN);
-	self->speedX *= -1;  // toggle horizontal direction
-	wiSwapTextures(self);
-}
-
-// for patrol or smthn
-static void maybeTurnAround(WorldItem *const self) {
-	if (self->speedX == 0)
-		return;
-	int origX = self->x;
-	// calculate hypothetical move
-	if (self->speedX < 0)  // going left
-		setX(self, self->x - self->width);
-	else  // going right
-		setX(self, self->x + self->width);
-
-	size_t collisions_len;
-	WorldItem **colls = isCollidingWith(self, &collisions_len, GDIRECTION_VERT);
-	bool onSolidSurface = false;
-	for (size_t i = 0; i < collisions_len; i++) {
-		if (colls[i]->type == STL_COIN)
-			continue;  // coins are not a solid surface
-		if (bottomOf(self) + 1 == topOf(colls[i])) {
-			onSolidSurface = true;
-			break;
-		}
-	}
-	free(colls);
-	if (!onSolidSurface)  // if gonna fall a hypothetical move, turn around
-		turnAround(self);
-	setX(self, origX);
-}
-
-// Callback for bot frame. Move the bot around horizontally.
-static void fnbot(WorldItem *const self) {
-	if (self->patrol)
-		maybeTurnAround(self);  // patrol
-
-	int moveX = canMoveTo(self, GDIRECTION_HORIZ);
-	if (moveX == 0) {
-		turnAround(self);
-	}
-	setX(self, self->x + moveX);
-}
-
-static void fnsnowball(WorldItem *const self) {
-	if (hitScreenBottom(self)) {
-		self->type = STL_DEAD;
-		return;
-	}
-	fnbot(self);
-}
-
-static void fnbouncingsnowball(WorldItem *const self) {
-	if (hitScreenBottom(self)) {
-		self->type = STL_DEAD;
-		return;
-	}
-	fnbot(self);
-	size_t collisions_len;
-	WorldItem **colls = isCollidingWith(self, &collisions_len, GDIRECTION_BOTH);
-	for (size_t i = 0; i < collisions_len; i++) {
-		const WorldItem *const coll = colls[i];
-		if (coll->type == STL_COIN)
-			continue;  // coins are not solid blocks to bounce off
-		if (bottomOf(self) + 1 == topOf(coll)) {  // bounce off surface
-			self->speedY = BOUNCINGSNOWBALL_JUMP_SPEED;
-			break;
 		}
 	}
 	free(colls);
@@ -977,8 +1047,7 @@ static void bombHandleExplosionCollisions(WorldItem *const self) {
 		WorldItem *const coll = colls[i];
 		switch (coll->type) {
 			case STL_PLAYER:
-				fprintf(stderr, "You died.\n");  // todo turn into a fn
-				coll->type = STL_PLAYER_DEAD;
+				killPlayer();
 				break;
 			case MRICEBLOCK:
 			case STL_DEAD_MRICEBLOCK:
@@ -1004,6 +1073,9 @@ static void bombHandleExplosionCollisions(WorldItem *const self) {
 				break;
 			case STL_BONUS:
 				coll->state = 0;  // destroy the bonus block
+				int x = (coll->x + gScrollOffset) / TILE_WIDTH;
+				int y = coll->y / TILE_HEIGHT;
+				lvl.interactivetm[y][x] = 84;
 		}
 	}
 	free(colls);
@@ -1042,14 +1114,6 @@ static void fnbomb(WorldItem *const self) {
 	}
 	else
 		fnbot(self);
-}
-
-static void fnspiky(WorldItem *const self) {
-	if (hitScreenBottom(self)) {
-		self->type = STL_DEAD;
-		return;
-	}
-	fnbot(self);
 }
 
 static void fnflyingsnowball(WorldItem *const self) {
@@ -1222,7 +1286,7 @@ static void maybeInitgTextureNames() {
 	initGLTextureNam(gTextureNames[23], "textures/snow17.data", false, false);
 	initGLTextureNam(gTextureNames[24], "textures/background7.data", false, true);
 	initGLTextureNam(gTextureNames[25], "textures/background8.data", false, true);
-	initGLTextureNam(gTextureNames[26], "textures/bonus2.data", false, false);
+	initGLTextureNam(gTextureNames[26], "textures/bonus2.data", false, true);
 	initGLTextureNam(gTextureNames[27], "textures/block1.data", false, false);
 	initGLTextureNam(gTextureNames[28], "textures/block2.data", false, false);
 	initGLTextureNam(gTextureNames[29], "textures/block3.data", false, false);
@@ -1260,7 +1324,7 @@ static void maybeInitgTextureNames() {
 	initGLTextureNam(gTextureNames[77], "textures/brick0.data", false, false);
 	initGLTextureNam(gTextureNames[78], "textures/brick1.data", false, false);
 	gTextureNames[83] = gTextureNames[26];
-	initGLTextureNam(gTextureNames[84], "textures/bonus2-d.data", false, false);
+	initGLTextureNam(gTextureNames[84], "textures/bonus2-d.data", false, true);
 	initGLTextureNam(gTextureNames[85], "textures/Acloud-00.data", false, true);
 	initGLTextureNam(gTextureNames[86], "textures/Acloud-01.data", false, true);
 	initGLTextureNam(gTextureNames[87], "textures/Acloud-02.data", false, true);
@@ -1269,8 +1333,8 @@ static void maybeInitgTextureNames() {
 	initGLTextureNam(gTextureNames[90], "textures/Acloud-11.data", false, true);
 	initGLTextureNam(gTextureNames[91], "textures/Acloud-12.data", false, true);
 	initGLTextureNam(gTextureNames[92], "textures/Acloud-13.data", false, true);
-	gTextureNames[102] = gTextureNames[26];  // drawn as bonus2 but does nothing
-	gTextureNames[103] = gTextureNames[26];
+	gTextureNames[102] = gTextureNames[26];  // bonus egg
+	gTextureNames[103] = gTextureNames[26];  // bonus star
 	gTextureNames[104] = gTextureNames[77];
 	gTextureNames[105] = gTextureNames[78];
 	initGLTextureNam(gTextureNames[79], "textures/pole.data", false, true);
@@ -1292,7 +1356,7 @@ static void maybeInitgTextureNames() {
 	initGLTextureNam(gTextureNames[123], "textures/snowbg2.data", false, true);
 	initGLTextureNam(gTextureNames[124], "textures/snowbg3.data", false, true);
 	initGLTextureNam(gTextureNames[125], "textures/snowbg4.data", false, true);
-	gTextureNames[128] = gTextureNames[26];
+	gTextureNames[128] = gTextureNames[26];  // bonus 1up
 	gTextureNames[201] = gTextureNames[76];
 	
 	assert(glGetError() == GL_NO_ERROR);
@@ -1369,15 +1433,23 @@ static void loadLevelInteractives() {
 			const uint8_t blocks[] = {  // tileIDs for solid tiles
 				10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 25,
 				27, 28, 29, 30, 31, 35, 36, 37, 38, 39, 40, 41, 42, 43, 47, 48,
-				49, 50, 51, 52, 57, 58, 59, 60, 61, 84, 102, 103, 105, 113, 114,
-				119, 120, 121, 124, 125, 128,
+				49, 50, 51, 52, 57, 58, 59, 60, 61, 84, 105, 113, 114,
+				119, 120, 121, 124, 125,
 			};
 			if (bsearch(&tileID, blocks, sizeof(blocks)/sizeof(uint8_t), 
 				sizeof(uint8_t), cmpForUint8_t))
 				addToBuckets(worldItem_new_block(STL_BLOCK, x, y));
-			else if (tileID == 26 || tileID == 83)
-				addToBuckets(worldItem_new_block(STL_BONUS, x, y));
-			else if (tileID == 77 || tileID == 78 || tileID == 104)
+			else if (tileID == 26 || tileID == 83 || tileID == 102 ||
+				tileID == 103 || tileID == 128) {
+				WorldItem *w = worldItem_new_block(STL_BONUS, x, y);
+				if (tileID == 102)
+					w->state = 2;
+				if (tileID == 103)
+					w->state = 3;
+				if (tileID == 128)
+					w->state = 4;
+				addToBuckets(w);
+			} else if (tileID == 77 || tileID == 78 || tileID == 104)
 				addToBuckets(worldItem_new_block(STL_BRICK, x, y));
 			else if (tileID == 112) {
 				WorldItem *const wi = worldItem_new(STL_INVISIBLE, x, y,
@@ -1419,21 +1491,13 @@ static void loadLevelObjects() {
 		WorldItem *w = NULL;
 		stl_obj *obj = &lvl.objects[i];
 		if (obj->type == SNOWBALL) {
-			w = worldItem_new(SNOWBALL, obj->x, obj->y - 1,
-				TILE_WIDTH - 2, TILE_HEIGHT - 2, BADGUY_X_SPEED, 1, true,
-				NULL, fnsnowball, true, true, false);
-			w->texnam = gObjTextureNames[STL_SNOWBALL_TEXTURE_LEFT];
-			w->texnam2 = gObjTextureNames[STL_SNOWBALL_TEXTURE_RIGHT];
+			w = worldItem_new_snowball(obj->x, obj->y, true);
 		} else if (obj->type == MRICEBLOCK) {
 			w = worldItem_new(MRICEBLOCK, obj->x, obj->y - 1,
 				TILE_WIDTH - 2, TILE_HEIGHT - 2, BADGUY_X_SPEED, 1, true,
 				"textures/mriceblock.data", fniceblock, true, true, false);
 		} else if (obj->type == BOUNCINGSNOWBALL) {
-			w = worldItem_new(BOUNCINGSNOWBALL, obj->x, obj->y - 1,
-				TILE_WIDTH - 2, TILE_HEIGHT - 2, BADGUY_X_SPEED, 1, true,
-				NULL, fnbouncingsnowball, true, false, false);
-			w->texnam = gObjTextureNames[STL_BOUNCINGSNOWBALL_TEXTURE_LEFT];
-			w->texnam2 = gObjTextureNames[STL_BOUNCINGSNOWBALL_TEXTURE_RIGHT];
+			w = worldItem_new_bsnowball(obj->x, obj->y);
 		} else if (obj->type == STL_BOMB) {
 			w = worldItem_new(STL_BOMB, obj->x, obj->y - 1,
 				TILE_WIDTH - 2, TILE_HEIGHT - 2, BADGUY_X_SPEED, 1, true, NULL,
@@ -1441,11 +1505,7 @@ static void loadLevelObjects() {
 			w->texnam = gObjTextureNames[STL_BOMB_TEXTURE_LEFT];
 			w->texnam2 = gObjTextureNames[STL_BOMB_TEXTURE_RIGHT];
 		} else if (obj->type == SPIKY) {
-			w = worldItem_new(SPIKY, obj->x, obj->y - 1,
-				TILE_WIDTH - 2, TILE_HEIGHT - 2, BADGUY_X_SPEED, 1, true, NULL,
-				fnspiky, true, true, true);
-			w->texnam = gObjTextureNames[STL_SPIKY_TEXTURE_LEFT];
-			w->texnam2 = gObjTextureNames[STL_SPIKY_TEXTURE_RIGHT];
+			w = worldItem_new_spiky(obj->x, obj->y, true);
 		} else if (obj->type == MONEY || obj->type == JUMPY) {
 			w = worldItem_new(JUMPY, obj->x, obj->y - 1,
 				TILE_WIDTH - 2, TILE_HEIGHT - 2, 0, JUMPY_JUMP_SPEED, true, NULL,
@@ -1653,8 +1713,8 @@ static void initialize(void) {
 	maybeInitgTextureNames();
 	
 	assert(populateGOTN());
-	assert(loadLevel("gpl/levels/level18.stl"));  // xxx
-	gCurrLevel = 18;  // hack for debugging xxx
+	assert(loadLevel("gpl/levels/level1.stl"));  // xxx
+	gCurrLevel = 1;  // hack for debugging xxx
 	
 	assert(loadLevelBackground());
 	
