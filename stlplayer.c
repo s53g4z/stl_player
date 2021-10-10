@@ -830,12 +830,7 @@ static void fnpl(WorldItem *self) {
 			case STL_BOMB_TICKING:
 			case BOUNCINGSNOWBALL:
 			case FLYINGSNOWBALL:
-				if (topOf(self) - 1 == bottomOf(colls[i]) ||
-					leftOf(self) - 1 == rightOf(colls[i]) ||
-					rightOf(self) + 1 == leftOf(colls[i])) {
-					fprintf(stderr, "You died.\n");
-					self->type = STL_PLAYER_DEAD;
-				} else if (bottomOf(self) + 1 == topOf(colls[i])) {
+				if (bottomOf(self) + 1 == topOf(colls[i])) {
 					if (self->speedY >= 0)
 						self->speedY = PLAYER_BOUNCE_SPEED;  // bounce off corpse
 					if (colls[i]->type == STL_BOMB) {
@@ -847,6 +842,11 @@ static void fnpl(WorldItem *self) {
 						colls[i]->patrol = false;
 					} else if (colls[i]->type != STL_BOMB_TICKING)
 						colls[i]->type = STL_DEAD;
+				} else if (topOf(self) - 1 == bottomOf(colls[i]) ||
+					leftOf(self) - 1 == rightOf(colls[i]) ||
+					rightOf(self) + 1 == leftOf(colls[i])) {
+					fprintf(stderr, "You died.\n");
+					self->type = STL_PLAYER_DEAD;
 				}
 				break;
 			case STL_BOMB_EXPLODING:
@@ -1713,8 +1713,8 @@ static void initialize(void) {
 	maybeInitgTextureNames();
 	
 	assert(populateGOTN());
-	assert(loadLevel("gpl/levels/level1.stl"));  // xxx
-	gCurrLevel = 1;  // hack for debugging xxx
+	assert(loadLevel("gpl/levels/level19.stl"));  // xxx
+	gCurrLevel = 19;  // hack for debugging xxx
 	
 	assert(loadLevelBackground());
 	
@@ -1818,7 +1818,7 @@ static char *buildLevelString() {
 
 static void reloadLevel(keys *const k, bool ignoreCheckpoints) {
 	assert(k);
-	if (gCurrLevel > 18)
+	if (gCurrLevel > 19)
 		gCurrLevel = 1;  // hack
 	
 	point rp;
