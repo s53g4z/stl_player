@@ -1818,7 +1818,7 @@ static char *buildLevelString() {
 
 static void reloadLevel(keys *const k, bool ignoreCheckpoints) {
 	assert(k);
-	if (gCurrLevel > 19)
+	if (gCurrLevel > 20)
 		gCurrLevel = 1;  // hack
 	
 	point rp;
