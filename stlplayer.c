@@ -35,7 +35,11 @@ static const uint8_t ignored_tiles[] = {
 };  // todo burndown
 
 enum gOTNi {
-	STL_DEAD_MRICEBLOCK_TEXTURE_LEFT = 0,
+	STL_TUX_LEFT = 0,
+	STL_TUX_RIGHT,
+	STL_ICEBLOCK_TEXTURE_LEFT,
+	STL_ICEBLOCK_TEXTURE_RIGHT,
+	STL_DEAD_MRICEBLOCK_TEXTURE_LEFT,
 	STL_DEAD_MRICEBLOCK_TEXTURE_RIGHT,
 	STL_SNOWBALL_TEXTURE_LEFT,
 	STL_SNOWBALL_TEXTURE_RIGHT,
@@ -61,8 +65,8 @@ static void initGLTextureNam(const uint32_t texnam, const char *const imgnam,
 	bool mirror, bool hasAlpha);
 
 static WorldItem *worldItem_new(enum stl_obj_type type, int x, int y, int wi,
-	int h, float spx, float spy, bool gravity, char *imgnam,
-	void(*frame)(WorldItem *const), bool mirrable, bool patrol, bool hasAlpha) {
+	int h, float spx, float spy, bool gravity, void(*frame)(WorldItem *const),
+	bool patrol, uint32_t texnam, uint32_t texnam2) {
 	assert(wi > 0 && h > 0 && wi < BUCKETS_SIZE);
 	WorldItem *w = nnmalloc(sizeof(WorldItem));
 	w->type = type;
@@ -77,16 +81,8 @@ static WorldItem *worldItem_new(enum stl_obj_type type, int x, int y, int wi,
 	w->patrol = patrol;  // just a value, does nothing on its own
 	w->next = NULL;
 	
-	w->texnam = 0;
-	w->texnam2 = 0;
-	if (imgnam) {
-		glGenTextures(1, &w->texnam);
-		initGLTextureNam(w->texnam, imgnam, false, hasAlpha);
-		if (mirrable) {
-			glGenTextures(1, &w->texnam2);
-			initGLTextureNam(w->texnam2, imgnam, true, hasAlpha);
-		}
-	}
+	w->texnam = texnam;
+	w->texnam2 = texnam2;
 	
 	return w;
 }
@@ -125,7 +121,7 @@ static void delFromBuckets(WorldItem *const w) {
 		curr = curr->next;
 	}
 	
-	assert(0);  // wrong bucket?
+	assert(NULL);  // wrong bucket?
 }
 
 // Add w to gBuckets.
@@ -728,28 +724,26 @@ static void fnspiky(WorldItem *const self) {
 static WorldItem *worldItem_new_bsnowball(int x, int y) {
 	WorldItem *bs = worldItem_new(BOUNCINGSNOWBALL, x, y - 1,
 		TILE_WIDTH - 2, TILE_HEIGHT - 2, BADGUY_X_SPEED, 1, true,
-		NULL, fnbouncingsnowball, true, false, false);
-	bs->texnam = gObjTextureNames[STL_BOUNCINGSNOWBALL_TEXTURE_LEFT];
-	bs->texnam2 = gObjTextureNames[STL_BOUNCINGSNOWBALL_TEXTURE_RIGHT];
+		fnbouncingsnowball, false, 
+		gObjTextureNames[STL_BOUNCINGSNOWBALL_TEXTURE_LEFT],
+		gObjTextureNames[STL_BOUNCINGSNOWBALL_TEXTURE_RIGHT]);
 	return bs;
 }
 
 // Return a new WorldItem snowball.
 static WorldItem *worldItem_new_snowball(int x, int y, bool patrol) {
-	WorldItem *w = worldItem_new(SNOWBALL, x, y - 1,
+	WorldItem *sb = worldItem_new(SNOWBALL, x, y - 1,
 		TILE_WIDTH - 2, TILE_HEIGHT - 2, BADGUY_X_SPEED, 1, true,
-		NULL, fnsnowball, true, patrol, false);
-	w->texnam = gObjTextureNames[STL_SNOWBALL_TEXTURE_LEFT];
-	w->texnam2 = gObjTextureNames[STL_SNOWBALL_TEXTURE_RIGHT];
-	return w;
+		fnsnowball, patrol, gObjTextureNames[STL_SNOWBALL_TEXTURE_LEFT],
+		gObjTextureNames[STL_SNOWBALL_TEXTURE_RIGHT]);
+	return sb;
 }
 
 static WorldItem *worldItem_new_spiky(int x, int y, bool patrol) {
 	WorldItem *spiky = worldItem_new(SPIKY, x, y - 1,
-		TILE_WIDTH - 2, TILE_HEIGHT - 2, BADGUY_X_SPEED, 1, true, NULL,
-		fnspiky, true, patrol, true);
-	spiky->texnam = gObjTextureNames[STL_SPIKY_TEXTURE_LEFT];
-	spiky->texnam2 = gObjTextureNames[STL_SPIKY_TEXTURE_RIGHT];
+		TILE_WIDTH - 2, TILE_HEIGHT - 2, BADGUY_X_SPEED, 1, true,
+		fnspiky, patrol, gObjTextureNames[STL_SPIKY_TEXTURE_LEFT],
+		gObjTextureNames[STL_SPIKY_TEXTURE_RIGHT]);
 	return spiky;
 }
 
@@ -1188,7 +1182,8 @@ static void applyFrame() {
 	}
 }
 
-static uint32_t gTextureNames[257];  // 0-256, plus 1 for the background image
+// [0-256], plus background image, plus "transparent" tile
+static uint32_t gTextureNames[258];
 
 // Mirror a 64 * 64 * 4 array of {char r, g, b, a}.
 static void mirrorTexelImgAlpha(void *imgmem) {
@@ -1263,7 +1258,7 @@ static void maybeInitgTextureNames() {
 	assert(!ran);
 	ran = true;
 	
-	glGenTextures(257, gTextureNames);
+	glGenTextures(258, gTextureNames);
 	assert(glGetError() == GL_NO_ERROR);
 	
 	// todo: connect the rest of the valid texturename indexes to files
@@ -1359,6 +1354,8 @@ static void maybeInitgTextureNames() {
 	gTextureNames[128] = gTextureNames[26];  // bonus 1up
 	gTextureNames[201] = gTextureNames[76];
 	
+	initGLTextureNam(gTextureNames[257], "textures/transparent.data", false, true);
+	
 	assert(glGetError() == GL_NO_ERROR);
 }
 
@@ -1400,7 +1397,7 @@ static WorldItem *worldItem_new_block(enum stl_obj_type type, int x, int y) {
 		assert(width == 30 && height == 30);
 	}
 	WorldItem *const w = worldItem_new(type, x, y, width, height,
-		0, 0, false, NULL, fnret, false, false, false);
+		0, 0, false, fnret, false, 0, 0);
 	if (type == STL_BONUS || type == STL_INVISIBLE)
 		w->state = 1;
 	return w;
@@ -1454,8 +1451,7 @@ static void loadLevelInteractives() {
 			else if (tileID == 112) {
 				WorldItem *const wi = worldItem_new(STL_INVISIBLE, x, y,
 					TILE_WIDTH, TILE_HEIGHT, 0, 0, false,
-					"textures/transparent.data", fnret, false, false, true);
-				wi->texnam2 = gTextureNames[112];
+					fnret, false, gTextureNames[257], gTextureNames[112]);
 				wi->state = 1;
 				addToBuckets(wi);
 				assert(lvl.interactivetm[h][w] == 112);
@@ -1495,33 +1491,32 @@ static void loadLevelObjects() {
 		} else if (obj->type == MRICEBLOCK) {
 			w = worldItem_new(MRICEBLOCK, obj->x, obj->y - 1,
 				TILE_WIDTH - 2, TILE_HEIGHT - 2, BADGUY_X_SPEED, 1, true,
-				"textures/mriceblock.data", fniceblock, true, true, false);
+				fniceblock, true, gObjTextureNames[STL_ICEBLOCK_TEXTURE_LEFT],
+				gObjTextureNames[STL_ICEBLOCK_TEXTURE_RIGHT]);
 		} else if (obj->type == BOUNCINGSNOWBALL) {
 			w = worldItem_new_bsnowball(obj->x, obj->y);
 		} else if (obj->type == STL_BOMB) {
 			w = worldItem_new(STL_BOMB, obj->x, obj->y - 1,
-				TILE_WIDTH - 2, TILE_HEIGHT - 2, BADGUY_X_SPEED, 1, true, NULL,
-				fnbomb, true, true, true);
-			w->texnam = gObjTextureNames[STL_BOMB_TEXTURE_LEFT];
-			w->texnam2 = gObjTextureNames[STL_BOMB_TEXTURE_RIGHT];
+				TILE_WIDTH - 2, TILE_HEIGHT - 2, BADGUY_X_SPEED, 1, true,
+				fnbomb, true, gObjTextureNames[STL_BOMB_TEXTURE_LEFT],
+				gObjTextureNames[STL_BOMB_TEXTURE_RIGHT]);
 		} else if (obj->type == SPIKY) {
 			w = worldItem_new_spiky(obj->x, obj->y, true);
 		} else if (obj->type == MONEY || obj->type == JUMPY) {
 			w = worldItem_new(JUMPY, obj->x, obj->y - 1,
-				TILE_WIDTH - 2, TILE_HEIGHT - 2, 0, JUMPY_JUMP_SPEED, true, NULL,
-				fnjumpy, false, false, false);
-			w->texnam = gObjTextureNames[STL_JUMPY_TEXTURE];
+				TILE_WIDTH - 2, TILE_HEIGHT - 2, 0, JUMPY_JUMP_SPEED, true,
+				fnjumpy, false, gObjTextureNames[STL_JUMPY_TEXTURE], 0);
 		} else if (obj->type == FLYINGSNOWBALL) {
 			w = worldItem_new(FLYINGSNOWBALL, obj->x, obj->y - 1,
 				TILE_WIDTH - 2, TILE_HEIGHT - 2, 0, FLYINGSNOWBALL_HOVER_SPEED, 
-				false, NULL, fnflyingsnowball, false, false, false);
-			w->texnam = gObjTextureNames[STL_FLYINGSNOWBALL_TEXTURE_LEFT];
-			w->texnam = gObjTextureNames[STL_FLYINGSNOWBALL_TEXTURE_RIGHT];
+				false, fnflyingsnowball, false,
+				gObjTextureNames[STL_FLYINGSNOWBALL_TEXTURE_LEFT],
+				gObjTextureNames[STL_FLYINGSNOWBALL_TEXTURE_RIGHT]);
 		} else if (obj->type == STALACTITE) {
 			w = worldItem_new(STALACTITE, obj->x, obj->y - 1,
-				TILE_WIDTH - 2, TILE_HEIGHT - 2, 0, 2, false, NULL,
-				fnstalactite, false, false, false);
-			w->texnam = gObjTextureNames[STL_STALACTITE_TEXTURE];
+				TILE_WIDTH - 2, TILE_HEIGHT - 2, 0, 2, false,
+				fnstalactite, false, gObjTextureNames[STL_STALACTITE_TEXTURE],
+				0);
 		} else {
 			fprintf(stderr, "WARN: skipping the load of an obj!\n");
 			continue;
@@ -1545,7 +1540,7 @@ static void initBuckets() {
 	assert(lvl.width > 0 && BUCKETS_SIZE > 0);
 	
 	gBuckets_len = lvl.width * TILE_WIDTH / BUCKETS_SIZE;
-	if (lvl.width % BUCKETS_SIZE != 0)
+	if (lvl.width * TILE_WIDTH % BUCKETS_SIZE != 0)
 		gBuckets_len++;
 	
 	gBuckets = nnmalloc(gBuckets_len * sizeof(WorldItem *));
@@ -1573,8 +1568,8 @@ static bool loadLevel(const char *const level_filename) {
 	
 	initBuckets();
 	player = worldItem_new(STL_PLAYER, lvl.start_pos_x, lvl.start_pos_y,
-		TILE_WIDTH / 3 * 2, TILE_HEIGHT - 2, 0, 1, true, "textures/tux.data",
-		fnpl, true, false, true);
+		TILE_WIDTH / 3 * 2, TILE_HEIGHT - 2, 0, 1, true, fnpl, false,
+		gObjTextureNames[STL_TUX_LEFT], gObjTextureNames[STL_TUX_RIGHT]);
 	addToBuckets(player);
 	
 	loadLevelObjects();
@@ -1591,10 +1586,20 @@ static bool populateGOTN() {
 	
 	glGenTextures(gOTNlen, gObjTextureNames);
 	
+	initGLTextureNam(gObjTextureNames[STL_TUX_LEFT], "textures/tux.data",
+		false, true);
+	initGLTextureNam(gObjTextureNames[STL_TUX_RIGHT], "textures/tux.data",
+		true, true);
+	
+	initGLTextureNam(gObjTextureNames[STL_ICEBLOCK_TEXTURE_LEFT],
+		"textures/mriceblock.data", false, true);
+	initGLTextureNam(gObjTextureNames[STL_ICEBLOCK_TEXTURE_RIGHT],
+		"textures/mriceblock.data", true, true);
+	
 	initGLTextureNam(gObjTextureNames[STL_DEAD_MRICEBLOCK_TEXTURE_LEFT],
-		"textures/mriceblock-flat-left.data", false, false);
+		"textures/mriceblock-flat-left.data", false, true);
 	initGLTextureNam(gObjTextureNames[STL_DEAD_MRICEBLOCK_TEXTURE_RIGHT],
-		"textures/mriceblock-flat-left.data", true, false);
+		"textures/mriceblock-flat-left.data", true, true);
 	initGLTextureNam(gObjTextureNames[STL_SNOWBALL_TEXTURE_LEFT],
 		"textures/Asnowball.data", false, true);
 	initGLTextureNam(gObjTextureNames[STL_SNOWBALL_TEXTURE_RIGHT],
