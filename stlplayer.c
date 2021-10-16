@@ -1315,6 +1315,9 @@ static void maybeInitgTextureNames() {
 	initGLTextureNam(gTextureNames[59], "textures/pipe7.data", false, true);
 	initGLTextureNam(gTextureNames[60], "textures/pipe8.data", false, true);
 	initGLTextureNam(gTextureNames[61], "textures/block10.data", false, true);
+	
+	initGLTextureNam(gTextureNames[75], "textures/water.data", false, true);
+	
 	initGLTextureNam(gTextureNames[76], "textures/waves-1.data", false, true);
 	initGLTextureNam(gTextureNames[77], "textures/brick0.data", false, false);
 	initGLTextureNam(gTextureNames[78], "textures/brick1.data", false, false);
@@ -1464,9 +1467,10 @@ static void loadLevelInteractives() {
 				(tileID >= 7 && tileID <= 9) || tileID == 24 || tileID == 25 ||
 				tileID == 122 || tileID == 123 || tileID == 201 ||
 				(tileID >= 106 && tileID <= 111) ||
-				(tileID >= 32 && tileID <= 34) || tileID == 79) {
+				(tileID >= 32 && tileID <= 34) || tileID == 79 ||
+				tileID == 75) {
 				// for some reason, cloud tiles show up in interactive-tm
-				// 76 is a wave (water wave)
+				// 75 and 76 are water and wave
 				// 7, 8, 9 are snow layer for the ground
 				// 24 and 25 are patches of grass o_O
 				// 106-111 are a pile of snow
@@ -1718,8 +1722,8 @@ static void initialize(void) {
 	maybeInitgTextureNames();
 	
 	assert(populateGOTN());
-	assert(loadLevel("gpl/levels/level21.stl"));  // xxx
-	gCurrLevel = 21;  // hack for debugging xxx
+	assert(loadLevel("gpl/levels/level23.stl"));  // xxx
+	gCurrLevel = 23;  // hack for debugging xxx
 	
 	assert(loadLevelBackground());
 	
@@ -1823,7 +1827,7 @@ static char *buildLevelString() {
 
 static void reloadLevel(keys *const k, bool ignoreCheckpoints) {
 	assert(k);
-	if (gCurrLevel > 21)
+	if (gCurrLevel > 23)
 		gCurrLevel = 1;  // hack
 	
 	point rp;
