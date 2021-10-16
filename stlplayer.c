@@ -1321,6 +1321,13 @@ static void maybeInitgTextureNames() {
 	initGLTextureNam(gTextureNames[60], "textures/pipe8.data", false, true);
 	initGLTextureNam(gTextureNames[61], "textures/block10.data", false, true);
 	
+	initGLTextureNam(gTextureNames[64], "textures/grey.data", false, true);
+	gTextureNames[65] = gTextureNames[64];
+	gTextureNames[66] = gTextureNames[64];
+	gTextureNames[67] = gTextureNames[64];
+	gTextureNames[68] = gTextureNames[64];
+	gTextureNames[69] = gTextureNames[64];
+	
 	initGLTextureNam(gTextureNames[75], "textures/water.data", false, true);
 	
 	initGLTextureNam(gTextureNames[76], "textures/waves-1.data", false, true);
@@ -1440,8 +1447,8 @@ static void loadLevelInteractives() {
 			const uint8_t blocks[] = {  // tileIDs for solid tiles
 				10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 25,
 				27, 28, 29, 30, 31, 35, 36, 37, 38, 39, 40, 41, 42, 43, 47, 48,
-				49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 84, 105,
-				113, 114, 119, 120, 121, 124, 125,
+				49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 64, 65, 66,
+				67, 68, 69, 84, 105, 113, 114, 119, 120, 121, 124, 125,
 			};
 			if (bsearch(&tileID, blocks, sizeof(blocks)/sizeof(uint8_t), 
 				sizeof(uint8_t), cmpForUint8_t))
@@ -1730,8 +1737,8 @@ static void initialize(void) {
 	maybeInitgTextureNames();
 	
 	assert(populateGOTN());
-	assert(loadLevel("gpl/levels/level24.stl"));  // xxx
-	gCurrLevel = 24;  // hack for debugging xxx
+	assert(loadLevel("gpl/levels/level25.stl"));  // xxx
+	gCurrLevel = 25;  // hack for debugging xxx
 	
 	assert(loadLevelBackground());
 	
@@ -1835,7 +1842,7 @@ static char *buildLevelString() {
 
 static void reloadLevel(keys *const k, bool ignoreCheckpoints) {
 	assert(k);
-	if (gCurrLevel > 24)
+	if (gCurrLevel > 25)
 		gCurrLevel = 1;  // hack
 	
 	point rp;
