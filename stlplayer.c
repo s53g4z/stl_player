@@ -1310,6 +1310,11 @@ static void maybeInitgTextureNames() {
 	initGLTextureNam(gTextureNames[51], "textures/block8.data", false, false);
 	initGLTextureNam(gTextureNames[52], "textures/block9.data", false, false);
 	
+	initGLTextureNam(gTextureNames[53], "textures/pipe1.data", false, true);
+	initGLTextureNam(gTextureNames[54], "textures/pipe2.data", false, true);
+	initGLTextureNam(gTextureNames[55], "textures/pipe3.data", false, true);
+	initGLTextureNam(gTextureNames[56], "textures/pipe4.data", false, true);
+	
 	initGLTextureNam(gTextureNames[57], "textures/pipe5.data", false, true);
 	initGLTextureNam(gTextureNames[58], "textures/pipe6.data", false, true);
 	initGLTextureNam(gTextureNames[59], "textures/pipe7.data", false, true);
@@ -1355,7 +1360,9 @@ static void maybeInitgTextureNames() {
 	initGLTextureNam(gTextureNames[124], "textures/snowbg3.data", false, true);
 	initGLTextureNam(gTextureNames[125], "textures/snowbg4.data", false, true);
 	gTextureNames[128] = gTextureNames[26];  // bonus 1up
-	gTextureNames[201] = gTextureNames[76];
+	
+	initGLTextureNam(gTextureNames[200], "textures/water-trans.data", false, true);
+	initGLTextureNam(gTextureNames[201], "textures/waves-trans.data", false, true);
 	
 	initGLTextureNam(gTextureNames[257], "textures/transparent.data", false, true);
 	
@@ -1433,8 +1440,8 @@ static void loadLevelInteractives() {
 			const uint8_t blocks[] = {  // tileIDs for solid tiles
 				10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 25,
 				27, 28, 29, 30, 31, 35, 36, 37, 38, 39, 40, 41, 42, 43, 47, 48,
-				49, 50, 51, 52, 57, 58, 59, 60, 61, 84, 105, 113, 114,
-				119, 120, 121, 124, 125,
+				49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 84, 105,
+				113, 114, 119, 120, 121, 124, 125,
 			};
 			if (bsearch(&tileID, blocks, sizeof(blocks)/sizeof(uint8_t), 
 				sizeof(uint8_t), cmpForUint8_t))
@@ -1650,7 +1657,8 @@ static bool loadLevelBackground() {
 	
 	// investigate taking off the filename extension
 	if (strlen(filename) > 4 &&
-		0 == strcmp(".jpg", filename + strlen(filename) - 4)) {
+		(0 == strcmp(".jpg", filename + strlen(filename) - 4) ||
+		0 == strcmp(".png", filename + strlen(filename) - 4))) {
 		filename = nnrealloc(filename, strlen(filename) + 1 + 1);  // ".data\0"
 		strcpy(filename + strlen(filename) - 4, ".data");
 		lvl.background = filename;
@@ -1722,8 +1730,8 @@ static void initialize(void) {
 	maybeInitgTextureNames();
 	
 	assert(populateGOTN());
-	assert(loadLevel("gpl/levels/level23.stl"));  // xxx
-	gCurrLevel = 23;  // hack for debugging xxx
+	assert(loadLevel("gpl/levels/level24.stl"));  // xxx
+	gCurrLevel = 24;  // hack for debugging xxx
 	
 	assert(loadLevelBackground());
 	
@@ -1827,7 +1835,7 @@ static char *buildLevelString() {
 
 static void reloadLevel(keys *const k, bool ignoreCheckpoints) {
 	assert(k);
-	if (gCurrLevel > 23)
+	if (gCurrLevel > 24)
 		gCurrLevel = 1;  // hack
 	
 	point rp;
