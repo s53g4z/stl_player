@@ -33,6 +33,7 @@ enum stl_obj_type {
 	MONEY,
 	SPIKY,
 	JUMPY,
+	STL_FLAME
 };
 
 struct WorldItem {

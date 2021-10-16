@@ -90,6 +90,7 @@ void stlPrinter(const stl *const lvl) {
 			case MONEY: str = "MONEY"; break;
 			case SPIKY: str = "SPIKY"; break;
 			case JUMPY: str = "JUMPY"; break;
+			case STL_FLAME: str = "FLAME"; break;
 		}
 		fprintf(stderr, "\t%s at %d, %d\n", str, lvl->objects[i].x,
 			lvl->objects[i].y);
@@ -436,6 +437,8 @@ stl_obj getSTLobj(const char **section, size_t *const section_len) {
 		consumeRestOfObj(&obj, SPIKY, section, section_len);
 	} else if (nextWordIs("jumpy", section, section_len)) {
 		consumeRestOfObj(&obj, JUMPY, section, section_len);
+	} else if (nextWordIs("flame", section, section_len)) {
+		consumeRestOfObj(&obj, STL_FLAME, section, section_len);
 	}
 	return obj;
 }

@@ -57,6 +57,7 @@ enum gOTNi {
 	STL_FLYINGSNOWBALL_TEXTURE_RIGHT,
 	STL_STALACTITE_TEXTURE,
 	STL_JUMPY_TEXTURE,
+	STL_FLAME_TEXTURE,
 	gOTNlen = 64,
 };
 static uint32_t gObjTextureNames[gOTNlen];  // shared across all levels
@@ -136,7 +137,7 @@ static void addToBuckets(WorldItem *const w) {
 	w->next = dnext;
 }
 
-static void setX(WorldItem *const w, int x) {
+static void setX(WorldItem *const w, const int x) {
 	const ssize_t bucketOrig = w->x / BUCKETS_SIZE;
 	const ssize_t bucketNew = x / BUCKETS_SIZE;
 	assert(bucketOrig >= 0 && bucketNew >= 0);
@@ -268,8 +269,9 @@ static int canMoveX(WorldItem *const w) {
 			WorldItem **colls = isCollidingWith(w, &collisions_len,
 				GDIRECTION_HORIZ);
 			for (size_t i = 0; i < collisions_len; i++) {
-				if (colls[i]->type == STL_COIN || colls[i]->type == STL_DEAD)
-					continue;  // ignore coin collisions
+				if (colls[i]->type == STL_COIN || colls[i]->type == STL_DEAD ||
+					colls[i]->type == STL_FLAME)
+					continue;  // ignore coin/flame collisions
 				if ((w->speedX > 0 && rightOf(w) + 1 == leftOf(colls[i])) ||
 					(w->speedX < 0 && leftOf(w) - 1 == rightOf(colls[i]))) {
 					shouldBreak = true;
@@ -308,8 +310,8 @@ static int canMoveY(WorldItem *const w) {
 			WorldItem **colls = isCollidingWith(w, &collisions_len,
 				GDIRECTION_VERT);
 			for (size_t i = 0; i < collisions_len; i++) {
-				if (colls[i]->type == STL_COIN)
-					continue;  // ignore coin collisions
+				if (colls[i]->type == STL_COIN || colls[i]->type == STL_FLAME)
+					continue;  // ignore coin/flame collisions
 				if (w->speedY > 0 && bottomOf(w) + 1 == topOf(colls[i])) {
 					shouldBreak = true;
 					break;
@@ -355,9 +357,14 @@ static void scrollTheScreen(int diff) {
 		WorldItem *node = gBuckets[i];
 		while (node && node->next) {
 			node->next->x -= diff;
-			if (node->next->x < -100) {
+			if (node->next->type == STL_FLAME)
+				node->next->speedX -= diff;
+			
+			if (node->next->type == STL_FLAME && node->next->speedX < -100)
+				node->next->speedX = -100;
+			if (node->next->x < -100)
 				node->next->x = -100;  // pile them up lol
-			}
+			
 			const size_t properBucket = node->next->x / BUCKETS_SIZE;
 			if (properBucket != i) {
 				WorldItem *migrate = node->next;
@@ -376,7 +383,8 @@ static void scrollTheScreen(int diff) {
 static void cleanupWorldItems() {
 	WorldItem *w = gBuckets[0];
 	while (w && w->next) {
-		if (w->next->x <= -100) {
+		if (w->next->x <= -100 || (w->next->type == STL_FLAME &&  // necessary???????
+			w->next->speedX <= -100)) {
 			WorldItem *trash = w->next;
 			w->next = w->next->next;
 			memset(trash, 0xe4, sizeof(*w));
@@ -720,6 +728,24 @@ static void fnspiky(WorldItem *const self) {
 	fnbot(self);
 }
 
+const double PI = 3.14159265358979323846;
+
+static void fnflame(WorldItem *const self) {
+	assert(self);
+	// todo
+	// spx and state are used to store the original x,y
+	// spy is used to store the current angle
+	
+	setX(self, self->speedX + 100 * cos(self->speedY));
+	self->y = self->state + 100 * sin(self->speedY);
+	
+	self->speedY += PI * 2 / 180;  // 1/3 revolution per second
+	if (fabs(self->speedY - PI * 2) < 0.001) {
+		fprintf(stderr, "DEBUG: rounding flame angle to 0 degrees\n");
+		self->speedY = 0;
+	}
+}
+
 // Return a new WorldItem bouncingsnowball.
 static WorldItem *worldItem_new_bsnowball(int x, int y) {
 	WorldItem *bs = worldItem_new(BOUNCINGSNOWBALL, x, y - 1,
@@ -766,6 +792,9 @@ static void fnpl(WorldItem *self) {
 		int x = (colls[i]->x + gScrollOffset) / TILE_WIDTH;
 		int y = colls[i]->y / TILE_HEIGHT;
 		switch (colls[i]->type) {
+			case STL_FLAME:
+			case MONEY:  // jumpy
+			case JUMPY:
 			case SPIKY:
 				killPlayer();
 				break;
@@ -902,11 +931,6 @@ static void fnpl(WorldItem *self) {
 				colls[i]->type = STL_DEAD;
 				//assert(lvl.interactivetm[y][x] == 44 || false);
 				lvl.interactivetm[y][x] = 0;
-				break;
-			case MONEY:  // jumpy
-			case JUMPY:
-				fprintf(stderr, "You died.\n");
-				self->type = STL_PLAYER_DEAD;
 				break;
 			case STL_WIN:
 				fprintf(stderr, "You win!\n");
@@ -1320,6 +1344,7 @@ static void maybeInitgTextureNames() {
 	initGLTextureNam(gTextureNames[59], "textures/pipe7.data", false, true);
 	initGLTextureNam(gTextureNames[60], "textures/pipe8.data", false, true);
 	initGLTextureNam(gTextureNames[61], "textures/block10.data", false, true);
+	gTextureNames[62] = gTextureNames[61];
 	
 	initGLTextureNam(gTextureNames[64], "textures/grey.data", false, true);
 	gTextureNames[65] = gTextureNames[64];
@@ -1447,7 +1472,7 @@ static void loadLevelInteractives() {
 			const uint8_t blocks[] = {  // tileIDs for solid tiles
 				10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 25,
 				27, 28, 29, 30, 31, 35, 36, 37, 38, 39, 40, 41, 42, 43, 47, 48,
-				49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 64, 65, 66,
+				49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 64, 65, 66,
 				67, 68, 69, 84, 105, 113, 114, 119, 120, 121, 124, 125,
 			};
 			if (bsearch(&tileID, blocks, sizeof(blocks)/sizeof(uint8_t), 
@@ -1535,6 +1560,13 @@ static void loadLevelObjects() {
 				TILE_WIDTH - 2, TILE_HEIGHT - 2, 0, 2, false,
 				fnstalactite, false, gObjTextureNames[STL_STALACTITE_TEXTURE],
 				0);
+		} else if (obj->type == STL_FLAME) {
+			// spx and state are used to store the original x,y
+			// spy is used to store the current angle
+			w = worldItem_new(STL_FLAME, obj->x + 100, obj->y,
+				TILE_WIDTH - 2, TILE_HEIGHT - 2, obj->x, 0, false, fnflame,
+				false, gObjTextureNames[STL_FLAME_TEXTURE], 0);
+			w->state = obj->y;
 		} else {
 			fprintf(stderr, "WARN: skipping the load of an obj!\n");
 			continue;
@@ -1650,7 +1682,10 @@ static bool populateGOTN() {
 		"textures/stalactite.data", false, true);
 	initGLTextureNam(gObjTextureNames[STL_JUMPY_TEXTURE], "textures/jumpy.data",
 		false, true);
-		
+	
+	initGLTextureNam(gObjTextureNames[STL_FLAME_TEXTURE], "textures/flame.data",
+		false, true);
+	
 	return glGetError() == GL_NO_ERROR;
 }
 
@@ -1737,8 +1772,8 @@ static void initialize(void) {
 	maybeInitgTextureNames();
 	
 	assert(populateGOTN());
-	assert(loadLevel("gpl/levels/level25.stl"));  // xxx
-	gCurrLevel = 25;  // hack for debugging xxx
+	assert(loadLevel("gpl/levels/level26.stl"));  // xxx
+	gCurrLevel = 26;  // hack for debugging xxx
 	
 	assert(loadLevelBackground());
 	
@@ -1842,7 +1877,7 @@ static char *buildLevelString() {
 
 static void reloadLevel(keys *const k, bool ignoreCheckpoints) {
 	assert(k);
-	if (gCurrLevel > 25)
+	if (gCurrLevel > 26)
 		gCurrLevel = 1;  // hack
 	
 	point rp;
