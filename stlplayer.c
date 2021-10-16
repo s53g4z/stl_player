@@ -1718,8 +1718,8 @@ static void initialize(void) {
 	maybeInitgTextureNames();
 	
 	assert(populateGOTN());
-	assert(loadLevel("gpl/levels/level19.stl"));  // xxx
-	gCurrLevel = 19;  // hack for debugging xxx
+	assert(loadLevel("gpl/levels/level21.stl"));  // xxx
+	gCurrLevel = 21;  // hack for debugging xxx
 	
 	assert(loadLevelBackground());
 	
@@ -1823,7 +1823,7 @@ static char *buildLevelString() {
 
 static void reloadLevel(keys *const k, bool ignoreCheckpoints) {
 	assert(k);
-	if (gCurrLevel > 20)
+	if (gCurrLevel > 21)
 		gCurrLevel = 1;  // hack
 	
 	point rp;
