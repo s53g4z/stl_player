@@ -1,6 +1,9 @@
 #ifndef UTIL_H
 #define UTIL_H
 
+extern char gSelf[];
+extern int gSelf_len;
+
 struct Point {
 	int x, y;
 };
@@ -19,5 +22,6 @@ void trimWhitespace(const char **section, size_t *section_len);
 int intAsStrLen(int n);
 void printTM(uint8_t **const tm, const int width, const int height);
 void must(unsigned long long condition);
+void findSelfOnLinux(void);
 
 #endif

@@ -566,21 +566,41 @@ static void printShaderLog(uint32_t shdr) {
 	}
 }
 
-// Initialize the GL program.
-static void initialize_prgm() {
-	prgm = glCreateProgram();
-	assert(prgm);
-	vtx_shdr = glCreateShader(GL_VERTEX_SHADER);
-	frag_shdr = glCreateShader(GL_FRAGMENT_SHADER);
-	assert(vtx_shdr && frag_shdr);
+// Helper for initialize_prgm.
+static void populateShaders(void) {
+	const char *const kPathVtx = "shaders/vtx.txt";
+	const char *const kPathFrag = "shaders/frag.txt";
+	
 	ssize_t src_len;
-	char *const vtx_src = safe_read("shaders/vtx.txt", &src_len);
+	
+	must(strlen(kPathVtx) + gSelf_len < 4096);
+	strcpy(gSelf + gSelf_len, kPathVtx);
+	
+	char *const vtx_src = safe_read(gSelf, &src_len);
 	glShaderSource(vtx_shdr, 1, (const char *const *)&vtx_src, (int *)&src_len);
 	free(vtx_src);
-	char *const frag_src = safe_read("shaders/frag.txt", &src_len);
+	
+	must(strlen(kPathFrag) + gSelf_len < 4096);
+	strcpy(gSelf + gSelf_len, kPathFrag);
+	
+	char *const frag_src = safe_read(gSelf, &src_len);
 	glShaderSource(frag_shdr, 1, (const char *const *)&frag_src,
 		(int *)&src_len);
 	free(frag_src);
+	
+	gSelf[gSelf_len] = '\0';  // replace the null terminator
+}
+
+// Initialize the GL program.
+static void initialize_prgm() {
+	prgm = glCreateProgram();
+	must(prgm);
+	vtx_shdr = glCreateShader(GL_VERTEX_SHADER);
+	frag_shdr = glCreateShader(GL_FRAGMENT_SHADER);
+	must(vtx_shdr && frag_shdr);
+	
+	populateShaders();
+	
 	glAttachShader(prgm, vtx_shdr);
 	glAttachShader(prgm, frag_shdr);
 	
@@ -741,7 +761,7 @@ static void fnflame(WorldItem *const self) {
 	
 	self->speedY += PI * 2 / 180;  // 1/3 revolution per second
 	if (fabs(self->speedY - PI * 2) < 0.001) {
-		fprintf(stderr, "DEBUG: rounding flame angle to 0 degrees\n");
+		//fprintf(stderr, "DEBUG: rounding flame angle to 0 degrees\n");
 		self->speedY = 0;
 	}
 }
@@ -1243,8 +1263,15 @@ static void mirrorTexelImg(void *imgmem, bool hasAlpha) {
 // make texnam usable by the GL.
 static void initGLTextureNam(const uint32_t texnam, const char *const imgnam,
 	bool mirror, bool hasAlpha) {
+	
+	must(gSelf_len + strlen(imgnam) < 4096);
+	strcpy(gSelf + gSelf_len, imgnam);
+	
 	ssize_t has_read;
-	char *imgmem = safe_read(imgnam, &has_read);
+	char *imgmem = safe_read(gSelf, &has_read);
+	
+	gSelf[gSelf_len] = '\0';
+	
 	assert((!hasAlpha && has_read == 64 * 64 * 3) ||
 		(hasAlpha && has_read == 64 * 64 * 4));
 	if (mirror) {  // flip-flop the image
@@ -1611,7 +1638,12 @@ static bool loadLevel(const char *const level_filename) {
 	
 	// load the new level
 	lrFailCleanup(NULL, &lvl);
-	lvl = levelReader(level_filename);
+	
+	must(gSelf_len + strlen(level_filename) < 4096);
+	strcpy(gSelf + gSelf_len, level_filename);
+	lvl = levelReader(gSelf);
+	gSelf[gSelf_len] = '\0';
+	
 	if (!lvl.hdr)
 		return false;
 	stlPrinter(&lvl);
@@ -1689,32 +1721,25 @@ static bool populateGOTN() {
 	return glGetError() == GL_NO_ERROR;
 }
 
-static bool loadLevelBackground() {
-	char *filename = lvl.background;
-	
-	if (strlen(filename) == 0) {
+static bool loadLevelBackground() {	
+	if (strlen(lvl.background) == 0) {
 		gTextureNames[256] = gTextureNames[0];
 		return true;
 	}
 	
-	// investigate taking off the filename extension
-	if (strlen(filename) > 4 &&
-		(0 == strcmp(".jpg", filename + strlen(filename) - 4) ||
-		0 == strcmp(".png", filename + strlen(filename) - 4))) {
-		filename = nnrealloc(filename, strlen(filename) + 1 + 1);  // ".data\0"
-		strcpy(filename + strlen(filename) - 4, ".data");
-		lvl.background = filename;
-	}
-	
-	size_t path_len = strlen("textures/") + strlen(filename) + 1;
-	char *path = nnmalloc(path_len);
-	strcpy(path, "textures/");
-	strcat(path, filename);
-	//path[path_len - 1] = '\0';
+	const char *const kDirectory = "textures/";
+	must(gSelf_len + strlen(kDirectory) + strlen(lvl.background) + 1 < 4096);
+	strcpy(gSelf + gSelf_len, kDirectory);
+	strcpy(gSelf + gSelf_len + strlen(kDirectory), lvl.background);
+	if (0 == strcmp(".jpg", gSelf + strlen(gSelf) - 4) ||
+		0 == strcmp(".png", gSelf + strlen(gSelf) - 4))
+		strcpy(gSelf + strlen(gSelf) - 4, ".data");
 	
 	ssize_t imgdat_len;
-	char *imgdat = safe_read(path, &imgdat_len);
-	free(path);
+	char *imgdat = safe_read(gSelf, &imgdat_len);
+	gSelf[gSelf_len] = '\0';
+	//free(path);
+	
 	assert(imgdat_len == 640 * 480 * 4);
 	glBindTexture(GL_TEXTURE_2D, gTextureNames[256]);
 	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -1768,11 +1793,15 @@ static void initialize_alphatiles(void) {
 }
 
 static void initialize(void) {
+	findSelfOnLinux();
+	
 	initialize_prgm();
 	maybeInitgTextureNames();
 	
 	assert(populateGOTN());
-	assert(loadLevel("gpl/levels/level26.stl"));  // xxx
+	
+	const char *const kStartingLevel = "gpl/levels/level26.stl";
+	assert(loadLevel(kStartingLevel));  // xxx	
 	gCurrLevel = 26;  // hack for debugging xxx
 	
 	assert(loadLevelBackground());
