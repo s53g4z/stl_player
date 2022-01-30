@@ -137,6 +137,7 @@ static void addToBuckets(WorldItem *const w) {
 	w->next = dnext;
 }
 
+// Move w to x and update the buckets.
 static void setX(WorldItem *const w, const int x) {
 	const ssize_t bucketOrig = w->x / BUCKETS_SIZE;
 	const ssize_t bucketNew = x / BUCKETS_SIZE;
@@ -156,6 +157,7 @@ static bool isBetween(const int c, const int a, const int b) {
 	return (a <= c && c <= b);
 }
 
+// Return true if w and v are colliding horizontally.
 static bool isCollidingHorizontally(const WorldItem *const w,
 	const WorldItem *const v) {
 	return v != w && (
@@ -166,6 +168,7 @@ static bool isCollidingHorizontally(const WorldItem *const w,
 	);
 }
 
+// Return true if w and v are colliding vertically.
 static bool isCollidingVertically(const WorldItem *const w,
 	const WorldItem *const v) {
 	return v != w && (
@@ -352,7 +355,7 @@ static void delNodeAfter(WorldItem *w) {
 }
 
 // Scroll everything diff pixels left.
-static void scrollTheScreen(int diff) {
+static void scrollTheScreen(const int diff) {
 	for (size_t i = 0; i < gBuckets_len; i++) {
 		WorldItem *node = gBuckets[i];
 		while (node && node->next) {
@@ -394,6 +397,7 @@ static void cleanupWorldItems() {
 	}
 }
 
+// Maybe scroll the screen.
 static void maybeScrollScreen() {
 	if (player->x <= SCREEN_WIDTH / 3 ||
 		gScrollOffset + SCREEN_WIDTH >= lvl.width * TILE_WIDTH)
@@ -403,6 +407,7 @@ static void maybeScrollScreen() {
 	//cleanupWorldItems();  // let cleanup be done by the caller
 }
 
+// Swap a WorldItem's textures.
 static void wiSwapTextures(WorldItem *const w) {
 	uint32_t tmp = w->texnam;
 	w->texnam = w->texnam2;
@@ -411,6 +416,7 @@ static void wiSwapTextures(WorldItem *const w) {
 
 static bool gPlayerLastDirectionWasRight = true;
 
+// Return true if player landed on a surface.
 static bool playerLandedOnSurface(WorldItem **const colls,
 	const size_t colls_len) {
 	for (size_t i = 0; i < colls_len; i++) {
@@ -429,6 +435,7 @@ static bool playerLandedOnSurface(WorldItem **const colls,
 	return false;
 }
 
+// Return true if player landed on a badguy.
 static bool playerLandedOnBadguy(WorldItem **const colls,
 	const size_t colls_len) {
 	for (size_t i = 0; i < colls_len; i++) {
@@ -450,6 +457,7 @@ static bool playerLandedOnBadguy(WorldItem **const colls,
 	return false;
 }
 
+// Process keyboard input.
 static void processInput(const keys *const k) {
 	assert(k && SCREEN_WIDTH && SCREEN_HEIGHT);
 	
@@ -522,6 +530,7 @@ static void processInput(const keys *const k) {
 	maybeScrollScreen();
 }
 
+// Apply gravity to all WorldItems.
 static void applyGravity() {
 	for (size_t i = 0; i < gBuckets_len; i++)
 		for (WorldItem *curr = gBuckets[i]->next; curr; curr = curr->next) {
@@ -554,6 +563,7 @@ static uint32_t prgm;
 static uint32_t vtx_shdr;
 static uint32_t frag_shdr;
 
+// Print shdr log.
 static void printShaderLog(uint32_t shdr) {
 	int log_len;
 	glGetShaderiv(shdr, GL_INFO_LOG_LENGTH, &log_len);
@@ -562,7 +572,6 @@ static void printShaderLog(uint32_t shdr) {
 		glGetShaderInfoLog(shdr, log_len, NULL, log);
 		fprintf(stderr, "SHDR_LOG: %s\n", log);
 		free(log);
-		//assert(NULL);
 	}
 }
 
@@ -752,7 +761,6 @@ const double PI = 3.14159265358979323846;
 
 static void fnflame(WorldItem *const self) {
 	assert(self);
-	// todo
 	// spx and state are used to store the original x,y
 	// spy is used to store the current angle
 	
@@ -785,6 +793,7 @@ static WorldItem *worldItem_new_snowball(int x, int y, bool patrol) {
 	return sb;
 }
 
+// Return a new WorldItem spiky.
 static WorldItem *worldItem_new_spiky(int x, int y, bool patrol) {
 	WorldItem *spiky = worldItem_new(SPIKY, x, y - 1,
 		TILE_WIDTH - 2, TILE_HEIGHT - 2, BADGUY_X_SPEED, 1, true,
@@ -1216,8 +1225,8 @@ static void applyFrame() {
 			if (w->next->type == STL_DEAD) {
 				delNodeAfter(w);
 			} else if (w->next->type == STL_BRICK_DESTROYED) {
-				int x = (w->next->x + gScrollOffset) / TILE_WIDTH;
-				int y = w->next->y / TILE_HEIGHT;
+				const int x = (w->next->x + gScrollOffset) / TILE_WIDTH;
+				const int y = w->next->y / TILE_HEIGHT;
 				lvl.interactivetm[y][x] = 0;
 				delNodeAfter(w);
 			} else
@@ -1431,9 +1440,9 @@ static void maybeInitgTextureNames() {
 static void drawGLvertices(const float *const vertices, const uint32_t texnam);
 
 static int cmpForUint8_t(const void *p, const void *q) {
-	const uint8_t *a = (const uint8_t *)p;
-	const uint8_t *b = (const uint8_t *)q;
-	int m = *a, n = *b;
+	const uint8_t *const a = (const uint8_t *const)p;
+	const uint8_t *const b = (const uint8_t *const)q;
+	const int m = *a, n = *b;
 	return m - n;
 }
 
@@ -1459,12 +1468,7 @@ static void paintTile(uint8_t tileID, int x, int y) {
 
 // Handy convenience function to make a new block. x and y are screen coords.
 static WorldItem *worldItem_new_block(enum stl_obj_type type, int x, int y) {
-	int width = TILE_WIDTH, height = TILE_HEIGHT;
-	if (type == SNOWBALL || type == MRICEBLOCK || type == STL_BOMB) {
-		width -= 2;  // slightly smaller hitbox
-		height -= 2;  // ibid
-		assert(width == 30 && height == 30);
-	}
+	const int width = TILE_WIDTH, height = TILE_HEIGHT;
 	WorldItem *const w = worldItem_new(type, x, y, width, height,
 		0, 0, false, fnret, false, 0, 0);
 	if (type == STL_BONUS || type == STL_INVISIBLE)
@@ -1488,7 +1492,7 @@ static void paintTM(uint8_t **tm) {
 }
 
 // Helper for loadLevel.
-static void loadLevelInteractives() {
+static void loadLevelInteractives(void) {
 	// Load in the interactives all at once, one time.
 	// (Painting for interactives happens elsewhere, repeatedly.)
 	for (int h = 0; h < lvl.height; h++)
@@ -1552,7 +1556,7 @@ static void loadLevelInteractives() {
 }
 
 // Helper for loadLevel.
-static void loadLevelObjects() {
+static void loadLevelObjects(void) {
 	for (size_t i = 0; i < lvl.objects_len; i++) {
 		WorldItem *w = NULL;
 		stl_obj *obj = &lvl.objects[i];
@@ -1613,7 +1617,7 @@ static void freeLinkedList(WorldItem *head) {
 }
 
 // Initialize gBuckets for use.
-static void initBuckets() {
+static void initBuckets(void) {
 	assert(lvl.width > 0 && BUCKETS_SIZE > 0);
 	
 	gBuckets_len = lvl.width * TILE_WIDTH / BUCKETS_SIZE;
@@ -1628,12 +1632,12 @@ static void initBuckets() {
 	}
 }
 
+// Load a level.
 static bool loadLevel(const char *const level_filename) {
 	for (size_t i = 0; i < gBuckets_len; i++) {
 		freeLinkedList(gBuckets[i]);  // (free the dummy nodes too)
 	}
 	free(gBuckets);
-	//gBuckets_len = 0;
 	gScrollOffset = 0;
 	
 	// load the new level
@@ -1661,7 +1665,7 @@ static bool loadLevel(const char *const level_filename) {
 }
 
 // Populate the gObjTextureNames array with textures (that last the whole game).
-static bool populateGOTN() {
+static bool populateGOTN(void) {
 	static bool ran = false;
 	assert(!ran);
 	ran = true;
@@ -1672,12 +1676,10 @@ static bool populateGOTN() {
 		false, true);
 	initGLTextureNam(gObjTextureNames[STL_TUX_RIGHT], "textures/tux.data",
 		true, true);
-	
 	initGLTextureNam(gObjTextureNames[STL_ICEBLOCK_TEXTURE_LEFT],
 		"textures/mriceblock.data", false, true);
 	initGLTextureNam(gObjTextureNames[STL_ICEBLOCK_TEXTURE_RIGHT],
 		"textures/mriceblock.data", true, true);
-	
 	initGLTextureNam(gObjTextureNames[STL_DEAD_MRICEBLOCK_TEXTURE_LEFT],
 		"textures/mriceblock-flat-left.data", false, true);
 	initGLTextureNam(gObjTextureNames[STL_DEAD_MRICEBLOCK_TEXTURE_RIGHT],
@@ -1714,14 +1716,14 @@ static bool populateGOTN() {
 		"textures/stalactite.data", false, true);
 	initGLTextureNam(gObjTextureNames[STL_JUMPY_TEXTURE], "textures/jumpy.data",
 		false, true);
-	
 	initGLTextureNam(gObjTextureNames[STL_FLAME_TEXTURE], "textures/flame.data",
 		false, true);
 	
 	return glGetError() == GL_NO_ERROR;
 }
 
-static bool loadLevelBackground() {	
+// Load the level background into gTextureNames[256]. Can be called 1+ times.
+static bool loadLevelBackground(void) {
 	if (strlen(lvl.background) == 0) {
 		gTextureNames[256] = gTextureNames[0];
 		return true;
@@ -1738,7 +1740,6 @@ static bool loadLevelBackground() {
 	ssize_t imgdat_len;
 	char *imgdat = safe_read(gSelf, &imgdat_len);
 	gSelf[gSelf_len] = '\0';
-	//free(path);
 	
 	assert(imgdat_len == 640 * 480 * 4);
 	glBindTexture(GL_TEXTURE_2D, gTextureNames[256]);
@@ -1764,17 +1765,19 @@ static bool loadLevelBackground() {
 
 static uint32_t alphatiles[256];
 
+// Helper for initialize_alphatiles().
 static void initialize_alphatile(char ch) {
 	const char *const prefix = "textures/alphabet/";
-	char *str = nnmalloc(strlen(prefix) + strlen("X.data") + 1);
-	strcpy(str, prefix);
-	str[strlen(prefix)] = ch;
-	str[strlen(prefix) + 1] = '\0';  // for strcat
-	strcat(str, ".data");
-	initGLTextureNam(alphatiles[(int)ch], str, false, true);
-	free(str);
+	char *path = nnmalloc(strlen(prefix) + strlen("X.data") + 1);
+	strcpy(path, prefix);
+	path[strlen(prefix)] = ch;
+	path[strlen(prefix) + 1] = '\0';  // for strcat
+	strcat(path, ".data");
+	initGLTextureNam(alphatiles[(int)ch], path, false, true);
+	free(path);
 }
 
+// Initialize the tiles used for printing msgs on-screen. Must run exactly once.
 static void initialize_alphatiles(void) {
 	glGenTextures(256, alphatiles);
 	
@@ -1792,6 +1795,7 @@ static void initialize_alphatiles(void) {
 	assert(glGetError() == GL_NO_ERROR);
 }
 
+// Initialize stl_player. Must run exactly once.
 static void initialize(void) {
 	findSelfOnLinux();
 	
@@ -1809,12 +1813,13 @@ static void initialize(void) {
 	initialize_alphatiles();
 }
 
-// Return true if w is off-screen.
+// Return true if w is completely off-screen.
 static bool isOffscreen(const WorldItem *const w) {
 	return (topOf(w) > SCREEN_HEIGHT || bottomOf(w) < 0 ||
 		leftOf(w) > SCREEN_WIDTH || rightOf(w) < 0);
 }
 
+// Draw the vertices with texnam. (The vertex shader will flip y.)
 static void drawGLvertices(const float *const vertices, const uint32_t texnam) {
 	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, vertices);
 	glEnableVertexAttribArray(0);
@@ -1829,6 +1834,7 @@ static void drawGLvertices(const float *const vertices, const uint32_t texnam) {
 	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, tcoords);
 	glEnableVertexAttribArray(1);
 	glBindAttribLocation(prgm, 1, "tcoords");
+	
 	assert(glGetError() == GL_NO_ERROR);
 
 	glBindTexture(GL_TEXTURE_2D, texnam);
@@ -1837,23 +1843,25 @@ static void drawGLvertices(const float *const vertices, const uint32_t texnam) {
 	must(glGetError() == GL_NO_ERROR);
 }
 
-static void drawWorldItems() {
+// Draw WorldItems.
+static void drawWorldItems(void) {
 	for (size_t i = 0; i < gBuckets_len; i++)
 		for (const WorldItem *w = gBuckets[i]->next; w; w = w->next) {
 			if (isOffscreen(w) || w->texnam == 0)
 				continue;
 			
 			const float vertices[] = {
-				0 + w->x,			0 + w->y,			1.0,
-				0 + w->x,			w->y + w->height,	1.0,
-				w->x + w->width,	0 + w->y,			1.0,
+				w->x,				w->y,				1.0,
+				w->x,				w->y + w->height,	1.0,
+				w->x + w->width,	w->y,				1.0,
 				w->x + w->width,	w->y + w->height,	1.0,
 			};
 			drawGLvertices(vertices, w->texnam);
 		}
 }
 
-static void drawLevelBackground() {
+// Draw the level background.
+static void drawLevelBackground(void) {
 	float backgroundVertices[] = {
 		0 - gScrollOffset % SCREEN_WIDTH,				0,				1.0,
 		0 - gScrollOffset % SCREEN_WIDTH,				SCREEN_HEIGHT,	1.0,
@@ -1862,7 +1870,7 @@ static void drawLevelBackground() {
 	};
 	drawGLvertices(backgroundVertices, gTextureNames[256]);
 	
-	// if the previous draw doesn't cover the entire screen ...
+	// if the previous draw doesn't cover the entire screen
 	if (gScrollOffset % SCREEN_WIDTH != 0) {
 		backgroundVertices[0] = SCREEN_WIDTH - gScrollOffset % SCREEN_WIDTH;
 		backgroundVertices[3] = SCREEN_WIDTH - gScrollOffset % SCREEN_WIDTH;
@@ -1872,13 +1880,15 @@ static void drawLevelBackground() {
 	}
 }
 
-static void clearScreen() {
+// Clear the entire screen with a solid color.
+static void clearScreen(void) {
 	glClearColor(30.0/255, 85.0/255, 150.0/255, 1);  // light blue
 	glClear(GL_COLOR_BUFFER_BIT);
 	drawLevelBackground();
 }
 
-static point selectResetPoint() {
+// Select the furthest reset point the player has passed in the level.
+static point selectResetPoint(void) {
 	point *rp = lvl.reset_points;
 	point ret = { -1, -1, NULL };
 	while (rp) {  // assume lvl.reset_points is sorted
@@ -1892,20 +1902,21 @@ static point selectResetPoint() {
 	return ret;
 }
 
-static char *buildLevelString() {
+// Return a heap path to the level file containing the gCurrLevel.
+static char *buildLevelFilePath(void) {
 	const char *const prefix = "gpl/levels/level";
-	char *file = malloc(strlen(prefix) + intAsStrLen(gCurrLevel) +
+	char *const path = malloc(strlen(prefix) + intAsStrLen(gCurrLevel) +
 		strlen(".stl") + 1);
-	strcpy(file, prefix);
-	sprintf(file + strlen(prefix), "%d", gCurrLevel);
-	file[strlen(prefix) + intAsStrLen(gCurrLevel)] = '\0';
-	strcat(file, ".stl");
-	fprintf(stderr, "DEBUG: loading %s\n", file);
-	return file;
+	strcpy(path, prefix);
+	sprintf(path + strlen(prefix), "%d", gCurrLevel);
+	path[strlen(prefix) + intAsStrLen(gCurrLevel)] = '\0';
+	strcat(path, ".stl");
+	fprintf(stderr, "DEBUG: loading %s\n", path);
+	return path;
 }
 
-static void reloadLevel(keys *const k, bool ignoreCheckpoints) {
-	assert(k);
+// (Re)load a level.
+static void reloadLevel(bool ignoreCheckpoints) {
 	if (gCurrLevel > 26)
 		gCurrLevel = 1;  // hack
 	
@@ -1913,7 +1924,7 @@ static void reloadLevel(keys *const k, bool ignoreCheckpoints) {
 	if (!ignoreCheckpoints)
 		rp = selectResetPoint();
 	
-	char *filename = buildLevelString();
+	char *filename = buildLevelFilePath();
 	assert(loadLevel(filename));
 	free(filename);
 	
@@ -1930,7 +1941,8 @@ static void reloadLevel(keys *const k, bool ignoreCheckpoints) {
 	gPlayerLastDirectionWasRight = true;  // player starts facing right
 }
 
-static void verifyBuckets() {
+// Perform a basic sanity check on buckets.
+static void verifyBuckets(void) {
 	for (size_t i = 0; i < gBuckets_len; i++)
 		for (WorldItem *w = gBuckets[i]->next; w; w = w->next)
 			assert(w->x / BUCKETS_SIZE == (ssize_t)i);
@@ -1964,9 +1976,10 @@ static size_t longestLine(const char *msg) {
 	return longest;
 }
 
-static void displayMessage(const char *msg, uint32_t backgroundID) {
-	size_t msg_width = longestLine(msg) * TILE_WIDTH / 2;
-	size_t msg_height = (count(msg, '\n') + 1) * TILE_HEIGHT / 2;
+// Display a message on the screen.
+static void displayMessage(const char *msg, const uint32_t backgroundID) {
+	const size_t msg_width = longestLine(msg) * TILE_WIDTH / 2;
+	const size_t msg_height = (count(msg, '\n') + 1) * TILE_HEIGHT / 2;
 	
 	size_t xpos = 0;
 	if (msg_width < (size_t)SCREEN_WIDTH)
@@ -1974,13 +1987,13 @@ static void displayMessage(const char *msg, uint32_t backgroundID) {
 	size_t ypos = 0;
 	if (msg_height < (size_t)SCREEN_HEIGHT)
 		ypos = (SCREEN_HEIGHT - msg_height) / 2;
-	size_t xpos_orig = xpos;  //, ypos_orig = ypos;
+	const size_t xpos_orig = xpos;  //, ypos_orig = ypos;
 	
 	for (; *msg; msg++) {
 		const float vertices[] = {
-			xpos,				ypos,				1,
-			xpos,				ypos + TILE_HEIGHT / 2,	1,
-			xpos + TILE_WIDTH / 2,	ypos,				1,
+			xpos,					ypos,					1,
+			xpos,					ypos + TILE_HEIGHT / 2,	1,
+			xpos + TILE_WIDTH / 2,	ypos,					1,
 			xpos + TILE_WIDTH / 2,	ypos + TILE_HEIGHT / 2,	1,
 		};
 		if ((*msg >= 'a' && *msg <= 'z') || (*msg >= '0' && *msg <= '9')) {
@@ -1999,13 +2012,13 @@ static void displayMessage(const char *msg, uint32_t backgroundID) {
 	}
 }
 
-static void displayDeathMessage() {
+static void displayDeathMessage(void) {
 	displayMessage("you died\nplease press enter", 255);
 }
 
-static void displayPassMessage() {
-	char *prefix = "level complete\n";
-	char *suffix = " deaths\nplease press enter";
+static void displayPassMessage(void) {
+	const char *const prefix = "level complete\n";
+	const char *const suffix = " deaths\nplease press enter";
 	char *msg = nnmalloc(strlen(prefix) + intAsStrLen(gNDeaths) +
 		strlen(suffix) + 1);
 	strcpy(msg, prefix);
@@ -2018,6 +2031,7 @@ static void displayPassMessage() {
 	free(msg);
 }
 
+// Core game loop. Runs everything else. Called by draw().
 static void core(keys *const k, bool runPhysics) {
 	static bool initialized = false;
 	if (!initialized) {
@@ -2047,7 +2061,7 @@ static void core(keys *const k, bool runPhysics) {
 			displayingMessage = false;
 			if (gNDeaths < 99999)
 				gNDeaths++;
-			reloadLevel(k, false);
+			reloadLevel(false);
 		}
 	} else if (player->type == STL_PLAYER_ASCENDED) {  // reload the next level
 		displayPassMessage();
@@ -2056,7 +2070,7 @@ static void core(keys *const k, bool runPhysics) {
 			displayingMessage = false;
 			gCurrLevel++;
 			gNDeaths = 0;
-			reloadLevel(k, true);
+			reloadLevel(true);
 		}
 	}
 }

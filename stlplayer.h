@@ -83,7 +83,6 @@ typedef struct level stl;
 void *nnmalloc(size_t sz);
 void *nnrealloc(void *, size_t);
 
-// debug
 stl_obj getSTLobj(const char **section, size_t *const section_len);
 void init_lvl_objects(stl *const lvl);
 void pushto_lvl_objects(stl *const lvl, stl_obj *obj);
