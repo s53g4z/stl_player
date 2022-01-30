@@ -1073,8 +1073,8 @@ static void fniceblock(WorldItem *const self) {
 		fnbot(self);
 }
 
-// Set self type to exploding, and reset the framesElapsed counter.
-static void bombExplodes(WorldItem *const self, int *const framesElapsed) {
+// Set self type to exploding, and reset the state/framesElapsed counter.
+static void bombExplodes(WorldItem *const self) {
 	self->type = STL_BOMB_EXPLODING;
 	self->gravity = false;
 	setX(self, self->x - self->width);
@@ -1083,7 +1083,7 @@ static void bombExplodes(WorldItem *const self, int *const framesElapsed) {
 	self->height *= 3;
 	self->texnam = gObjTextureNames[STL_BOMB_EXPLODING_TEXTURE_1];  // darker
 	self->texnam2 = gObjTextureNames[STL_BOMB_EXPLODING_TEXTURE_2];  // brighter
-	*framesElapsed = 0;  // reset the frame counter
+	self->state = 0;  // reset the frame counter
 }
 
 static void bombHandleExplosionCollisions(WorldItem *const self) {
@@ -1129,14 +1129,14 @@ static void bombHandleExplosionCollisions(WorldItem *const self) {
 }
 
 static void fnbomb(WorldItem *const self) {
-	static int framesElapsed = 0;
+	//static int framesElapsed = 0;
 	
 	if (hitScreenBottom(self)) {
 		self->type = STL_BOMB_EXPLODING;
 	}
 	
-	if (self->type == STL_BOMB_TICKING && framesElapsed >= 120) {
-		bombExplodes(self, &framesElapsed);
+	if (self->type == STL_BOMB_TICKING && self->state >= 120) {
+		bombExplodes(self);
 	}
 	
 	if (self->type == STL_BOMB_TICKING) {
@@ -1148,15 +1148,15 @@ static void fnbomb(WorldItem *const self) {
 			wiSwapTextures(self);
 		}
 		fnbot(self);
-		framesElapsed++;
+		self->state++;
 	} else if (self->type == STL_BOMB_EXPLODING) {
-		if (framesElapsed >= 60)
+		if (self->state >= 60)
 			self->type = STL_DEAD;
 		else {
-			if (framesElapsed % 5 == 0)
+			if (self->state % 5 == 0)
 				wiSwapTextures(self);
 			bombHandleExplosionCollisions(self);
-			framesElapsed++;
+			self->state++;
 		}
 	}
 	else
@@ -1164,18 +1164,18 @@ static void fnbomb(WorldItem *const self) {
 }
 
 static void fnflyingsnowball(WorldItem *const self) {
-	static int totalDistMoved = 0;
+	//static int totalDistMoved = 0;
 	
 	const int speedYOrig = self->speedY;
 	const int moveY = canMoveTo(self, GDIRECTION_VERT);
-	if (moveY == 0 || totalDistMoved >= 3 * TILE_HEIGHT) {
+	if (moveY == 0 || self->state >= 3 * TILE_HEIGHT) {
 		assert(self->speedY != INT_MIN);
 		if (self->speedY == speedYOrig)
 			self->speedY *= -1;  // for next time
-		totalDistMoved = 0;
+		self->state = 0;
 	} else {
 		self->y += moveY;
-		totalDistMoved += abs(moveY);
+		self->state += abs(moveY);
 	}
 }
 
@@ -1185,12 +1185,12 @@ static void fnstalactite(WorldItem *const self) {
 	if (abs(selfCenterX - playerCenterX) > 4 * TILE_WIDTH)
 		return;
 	
-	static int framesWaited = 0;
-	assert(framesWaited >= 0 && framesWaited <= 30);
-	if (framesWaited == 30)
+	//static int framesWaited = 0;
+	assert(self->state >= 0 && self->state <= 30);
+	if (self->state == 30)
 		self->gravity = true;
 	else
-		framesWaited++;
+		self->state++;
 }
 
 static void fnjumpy(WorldItem *const self) {
@@ -1574,6 +1574,8 @@ static void loadLevelObjects(void) {
 				TILE_WIDTH - 2, TILE_HEIGHT - 2, BADGUY_X_SPEED, 1, true,
 				fnbomb, true, gObjTextureNames[STL_BOMB_TEXTURE_LEFT],
 				gObjTextureNames[STL_BOMB_TEXTURE_RIGHT]);
+			// state is framesElapsed per instance
+			w->state = 0;
 		} else if (obj->type == SPIKY) {
 			w = worldItem_new_spiky(obj->x, obj->y, true);
 		} else if (obj->type == MONEY || obj->type == JUMPY) {
@@ -1586,11 +1588,15 @@ static void loadLevelObjects(void) {
 				false, fnflyingsnowball, false,
 				gObjTextureNames[STL_FLYINGSNOWBALL_TEXTURE_LEFT],
 				gObjTextureNames[STL_FLYINGSNOWBALL_TEXTURE_RIGHT]);
+			// state is totalDistMoved per instance
+			w->state = 0;
 		} else if (obj->type == STALACTITE) {
 			w = worldItem_new(STALACTITE, obj->x, obj->y - 1,
 				TILE_WIDTH - 2, TILE_HEIGHT - 2, 0, 2, false,
 				fnstalactite, false, gObjTextureNames[STL_STALACTITE_TEXTURE],
 				0);
+			// state is framesWaited per instance
+			w->state = 0;
 		} else if (obj->type == STL_FLAME) {
 			// spx and state are used to store the original x,y
 			// spy is used to store the current angle
