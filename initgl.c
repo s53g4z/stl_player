@@ -1,6 +1,6 @@
 #include "initgl.h"
 
-static egl_dat initialize_egl(void) {
+static egl_dat initializeEgl(void) {
 	egl_dat ed;
 	ed.d = eglGetDisplay(EGL_DEFAULT_DISPLAY);
 	assert(ed.d != EGL_NO_DISPLAY);
@@ -50,7 +50,7 @@ static egl_dat initialize_egl(void) {
 	return ed;
 }
 
-static void set_xkbrepeat(x_dat *const xd) {
+static void setXkbrepeat(x_dat *const xd) {
 	//XkbGetAutoRepeatRate(xd->d, XkbUseCoreKbd,
 	//	&xd->kbrTimeout, &xd->kbrInterval);
 	// escape hatch (copy and paste): $ xset r rate 500 20;
@@ -60,13 +60,13 @@ static void set_xkbrepeat(x_dat *const xd) {
 	XkbSetAutoRepeatRate(xd->d, XkbUseCoreKbd, 25, 200);
 }
 
-static x_dat initialize_xwin(void) {
+static x_dat initializeXwin(void) {
 	Status s = XInitThreads();
 	assert(0 != s);
 	
 	x_dat xd;
 	xd.d = XOpenDisplay(NULL);  // using Xlib, b/c XCB has poor documentation
-	set_xkbrepeat(&xd);
+	setXkbrepeat(&xd);
 	Window x_drw = XDefaultRootWindow(xd.d);
 	XSetWindowAttributes xswa = { 0 };
 	xswa.event_mask = KeyPressMask | KeyReleaseMask |
@@ -90,7 +90,7 @@ static x_dat initialize_xwin(void) {
 	return xd;
 }
 
-static void initialize_surface(egl_dat *ed, x_dat *xd) {
+static void initializeSurface(egl_dat *ed, x_dat *xd) {
 	ed->s = eglCreateWindowSurface(ed->d, ed->cfg[0], xd->w, NULL);
 	
 	int ret;
@@ -98,33 +98,38 @@ static void initialize_surface(egl_dat *ed, x_dat *xd) {
 	assert(ret == EGL_TRUE);
 }
 
-static mtx_t mtx;
-static pid_t tiddy = 1;  // Thread ID to DestroY
-static char tiddy_live = -1;
-
 // Terminate the X11 event pump thread and destroy the global mutex.
-void terminate_pXE_thread(thrd_t *const thr) {
+static void terminatePXEthread(
+	thrd_t *const thr,
+	mtx_t *const pmtx,
+	const pid_t *const pTiddy,
+	const char *const pIsTiddyAlive)
+{
 	int ret;
 	
-	ret = mtx_lock(&mtx);
-	assert(ret == thrd_success);
-	if (tiddy_live > 0) {
-		//assert(tiddy > 0);
-		ret = kill(tiddy, SIGTERM);
+	mutex_lock(pmtx);
+	if (*pIsTiddyAlive > 0) {
+		ret = kill(*pTiddy, SIGTERM);
 		assert(0 == ret);
 	}
 	ret = thrd_join(*thr, NULL);  // wait for thread's death
 	assert(ret == thrd_success);
-	//tiddy_live = false;
-	ret = mtx_unlock(&mtx);
-	assert(ret == thrd_success);
-	mtx_destroy(&mtx);
+	//g_isTiddyAlive = false;
+	mutex_unlock(pmtx);
+	mtx_destroy(pmtx);
 }
 
-static bool cleanup(egl_dat *ed, x_dat *xd, thrd_t *const thr) {
+static bool cleanup(
+	egl_dat *ed,
+	x_dat *xd,
+	thrd_t *const thr,
+	mtx_t *const pmtx,
+	const pid_t *const pTiddy,
+	const char *const pIsTiddyAlive)
+{
 	int ret;
 	
-	terminate_pXE_thread(thr);
+	terminatePXEthread(thr, pmtx, pTiddy, pIsTiddyAlive);
 	
 	ret = eglMakeCurrent(ed->d, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
 	assert(ret == EGL_TRUE);
@@ -146,13 +151,11 @@ static bool cleanup(egl_dat *ed, x_dat *xd, thrd_t *const thr) {
 	return true;
 }
 
-void updateKeys(const XEvent *const e, keys *const k) {
+static void updateKeys(const XEvent *const e, keys *const k, mtx_t *const pmtx) {
 	const bool keyState = e->type == KeyPress;
 	uint32_t keyCode = e->xkey.keycode;
-	int ret;
 	
-	ret = mtx_lock(&mtx);
-	assert(ret == thrd_success);
+	mutex_lock(pmtx);
 	
 	if (keyCode == 38 || keyCode == 40) {
 		if (keyCode == 38)
@@ -226,28 +229,27 @@ void updateKeys(const XEvent *const e, keys *const k) {
 		fprintf(stdout, "Key %d %s\n", keyCode,
 			keyState ? "KeyPress" : "KeyRelease");
 	
-	ret = mtx_unlock(&mtx);
-	assert(ret == thrd_success);
+	mutex_unlock(pmtx);
 }
 
 struct pXEargs {
-	x_dat *xd;
-	keys *k;
-} pXEargs;
+	x_dat *const xd;
+	keys *const k;
+	mtx_t *const pmtx;
+	pid_t *ptiddy;
+	char *pIsTiddyAlive; 
+};
 
-int pumpXEvents(void *p) {
+static int pumpXEvents(void *p) {
 	assert(p);
 	struct pXEargs *args = (struct pXEargs *)p;
 	uint64_t now_xorg_timediff_sec = 0, keyPresses = 0;
 	bool seenFirstEvent = false;
 	struct timespec prev = { 0 };
-	int ret;
-	
-	ret = mtx_lock(&mtx);
-	assert(ret == thrd_success);
-	tiddy = gettid();  // non-portable :(
-	ret = mtx_unlock(&mtx);
-	assert(ret == thrd_success);
+
+	mutex_lock(args->pmtx);
+	*args->ptiddy = gettid();  // non-portable :(
+	mutex_unlock(args->pmtx);
 	
 	for (;;) {
 		XEvent e = { 0 };
@@ -260,11 +262,9 @@ int pumpXEvents(void *p) {
 		}
 		
 		XLockDisplay(args->xd->d);
-		ret = mtx_lock(&mtx);
-		assert(ret == thrd_success);
-		tiddy_live = true;
-		ret = mtx_unlock(&mtx);
-		assert(ret == thrd_success);
+		mutex_lock(args->pmtx);
+		*args->pIsTiddyAlive = true;
+		mutex_unlock(args->pmtx);
 		XNextEvent(args->xd->d, &e);
 		XUnlockDisplay(args->xd->d);
 		
@@ -280,18 +280,17 @@ int pumpXEvents(void *p) {
 			}
 			uint64_t approxX11time_sec = now.tv_sec - now_xorg_timediff_sec;
 			uint64_t keyAge = e.xkey.time/1000 - approxX11time_sec;
-			if (e.xkey.time/1000 < approxX11time_sec)  // approx = inaccurat
+			if (e.xkey.time/1000 < approxX11time_sec)  // approx = inaccurate
 				keyAge = approxX11time_sec - e.xkey.time/1000;
 			if (keyAge < 2) {
 				if (e.xkey.keycode == 24) {  // 'q'
-					ret = mtx_lock(&mtx);
-					assert(ret == thrd_success);
-					tiddy_live = false;
-					ret = mtx_unlock(&mtx);
+					mutex_lock(args->pmtx);
+					*args->pIsTiddyAlive = false;
+					mtx_unlock(args->pmtx);
 					//assert(ret = thrd_success);  // XXX debug broken
 					return 0;
 				}
-				updateKeys(&e, args->k);
+				updateKeys(&e, args->k, args->pmtx);
 			} else
 				fprintf(stderr, "DEBUG: key age %llu, ignored\n",
 					(long long unsigned)keyAge);
@@ -300,17 +299,14 @@ int pumpXEvents(void *p) {
 	assert(NULL);
 }
 
-static void wait_for_thread_to_launch(mtx_t *pmtx) {
-	int ret;
-	
-	for (;;) {  // wait for thread to launch
+// Wait for g_isTiddyAlive to be initialized.
+static void waitForThreadToLaunch(mtx_t *pmtx, const char *const pIsTiddyAlive) {
+	for (;;) {
 		bool shouldBreak = false;
-		ret = mtx_lock(pmtx);
-		assert(ret == thrd_success);
-		if (tiddy_live != -1)  // has been set
+		mutex_lock(pmtx);
+		if (*pIsTiddyAlive != -1)  // has been initialized
 			shouldBreak = true;
-		ret = mtx_unlock(pmtx);
-		assert(ret == thrd_success);
+		mutex_unlock(pmtx);
 		if (shouldBreak)
 			break;
 		//fprintf(stderr, "waiting for thread to launch\n");
@@ -320,11 +316,13 @@ static void wait_for_thread_to_launch(mtx_t *pmtx) {
 static bool fn(void) {
 	keys k = { 0 };
 	thrd_t thr;
-	int ret;
+	mtx_t tiddy_mtx;
+	pid_t tiddy = 1;  // Thread ID to DestroY
+	char isTiddyAlive = -1;  // >0 means alive
 	
-	egl_dat ed = initialize_egl();
-	x_dat xd = initialize_xwin();
-	initialize_surface(&ed, &xd);
+	egl_dat ed = initializeEgl();
+	x_dat xd = initializeXwin();
+	initializeSurface(&ed, &xd);
 	
 	glViewport(0, 0, 640, 640);
 	glEnable(GL_BLEND);
@@ -332,13 +330,20 @@ static bool fn(void) {
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	draw(&k);  // initial paint (before multithreading occurs)
 	eglSwapBuffers(ed.d, ed.s);
-
-	ret = mtx_init(&mtx, mtx_plain);
+	
+	int ret;
+	ret = mtx_init(&tiddy_mtx, mtx_plain);
 	assert(ret == thrd_success);
-	struct pXEargs pXEargs = (struct pXEargs){ &xd, &k };
+	struct pXEargs pXEargs = (struct pXEargs){
+		&xd,
+		&k,
+		&tiddy_mtx,
+		&tiddy,
+		&isTiddyAlive
+	};
 	ret = thrd_create(&thr, pumpXEvents, &pXEargs);
 	assert(ret == thrd_success);
-	wait_for_thread_to_launch(&mtx);
+	waitForThreadToLaunch(&tiddy_mtx, &isTiddyAlive);
 
 	struct timespec prev = { 0 };
 	uint64_t frames = 0;
@@ -351,17 +356,13 @@ static bool fn(void) {
 			frames = 0;
 		}
 
-		ret = mtx_lock(&mtx);
-		assert(ret == thrd_success);
+		mutex_lock(&tiddy_mtx);
 		ret = draw(&k);
-		if (!tiddy_live || !ret) {
-			ret = mtx_unlock(&mtx);
-			assert(ret == thrd_success);
-			cleanup(&ed, &xd, &thr);
-			return !tiddy_live;  // ???
+		mutex_unlock(&tiddy_mtx);
+		if (!isTiddyAlive || !ret) {
+			cleanup(&ed, &xd, &thr, &tiddy_mtx, &tiddy, &isTiddyAlive);
+			return !isTiddyAlive;  // ???
 		}
-		ret = mtx_unlock(&mtx);
-		assert(ret == thrd_success);
 		
 		eglSwapBuffers(ed.d, ed.s);
 		frames++;
@@ -371,13 +372,11 @@ static bool fn(void) {
 	return true;
 }
 
-void terminate();
+void terminate(void);
 
-int main(int argc, char *argv[], char *const envp[]) {
+int main(int argc, char *argv[]) {
 	argv[0][0] += argc - argc;
 	
-	bool rv = fn();
+	fn();
 	terminate();
-	if (!rv)
-		execve(argv[0], argv, envp);
 }

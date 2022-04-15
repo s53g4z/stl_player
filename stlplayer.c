@@ -547,7 +547,7 @@ static void applyGravity() {
 }
 
 // Opposite of initialize().
-void terminate() {
+void terminate(void) {
 	for (size_t i = 0; i < gBuckets_len; i++)
 		for (WorldItem *w = gBuckets[i]; w;) {
 			WorldItem *next = w->next;

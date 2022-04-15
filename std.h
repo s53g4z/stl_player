@@ -1,5 +1,5 @@
-#ifndef BOOL_H
-#define BOOL_H
+#ifndef STD_H
+#define STD_H
 
 #include <assert.h>
 #include <stdio.h>

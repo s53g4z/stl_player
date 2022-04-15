@@ -166,3 +166,15 @@ void findSelfOnLinux(void) {
 	
 	fprintf(stderr, "DEBUG: path w/out filename: %s\n", gSelf);
 }
+
+// Lock a mutex. Always succeeds.
+void mutex_lock(mtx_t *const mtx) {
+	int ret = mtx_lock(mtx);
+	must(ret == thrd_success);
+}
+
+// Unlock a mutex. Always succeeds.
+void mutex_unlock(mtx_t *const mtx) {
+	int ret = mtx_unlock(mtx);
+	must(ret == thrd_success);
+}

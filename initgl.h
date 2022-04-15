@@ -14,6 +14,7 @@
 #include <X11/XKBlib.h>
 
 #include "std.h"
+#include "util.h"
 
 struct egl_data {
 	EGLDisplay d;
@@ -52,12 +53,12 @@ _Static_assert(sizeof(Window) == 8);
 int kill(pid_t, int);
 pid_t gettid(void);
 
-char *safe_read(const char *const, ssize_t *);
+//char *safe_read(const char *const, ssize_t *);
 bool draw(keys *const);
-void fakeGluPerspective(void);
-void print_curr_mv_matrix(float [4][4]);
+//void fakeGluPerspective(void);
+//void print_curr_mv_matrix(float [4][4]);
 bool elapsedTimeGreaterThanNS(struct timespec *const,
 	struct timespec *const, int64_t);
-void glPrintNum(uint64_t, uint32_t [2]);
+//void glPrintNum(uint64_t, uint32_t [2]);
 
 #endif
