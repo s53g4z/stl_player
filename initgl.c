@@ -60,7 +60,11 @@ static void setXkbrepeat(x_dat *const xd) {
 	XkbSetAutoRepeatRate(xd->d, XkbUseCoreKbd, 25, 200);
 }
 
-static x_dat initializeXwin(void) {
+static x_dat initializeXwin(
+	mtx_t *pResolutionMtx,
+	int *pResolutionWidth,
+	int *pResolutionHeight)
+{
 	Status s = XInitThreads();
 	assert(0 != s);
 	
@@ -69,15 +73,16 @@ static x_dat initializeXwin(void) {
 	setXkbrepeat(&xd);
 	Window x_drw = XDefaultRootWindow(xd.d);
 	XSetWindowAttributes xswa = { 0 };
-	xswa.event_mask = KeyPressMask | KeyReleaseMask |
-		ResizeRedirectMask | ExposureMask;
+	xswa.event_mask = KeyPressMask | KeyReleaseMask | ExposureMask;
+	
+	mutex_lock(pResolutionMtx);
 	xd.w = XCreateWindow(
 		xd.d,
 		x_drw,
 		10,
 		10,
-		640,
-		480,
+		*pResolutionWidth,
+		*pResolutionHeight,
 		0,
 		CopyFromParent,
 		InputOutput,
@@ -85,6 +90,8 @@ static x_dat initializeXwin(void) {
 		CWEventMask,
 		&xswa
 	);
+	mutex_unlock(pResolutionMtx);
+	
 	XMapWindow(xd.d, xd.w);
 	XSync(xd.d, false);
 	return xd;
@@ -119,33 +126,57 @@ static void terminatePXEthread(
 	mtx_destroy(pmtx);
 }
 
+struct goodies {
+	keys k;
+	thrd_t thr;
+	mtx_t tiddyMtx;
+	pid_t tiddy;
+	char isTiddyAlive;
+	mtx_t resolutionMtx;
+	int resolutionWidth, resolutionHeight;
+	egl_dat ed;
+	x_dat xd;
+};
+
 static bool cleanup(
-	egl_dat *ed,
-	x_dat *xd,
-	thrd_t *const thr,
-	mtx_t *const pmtx,
-	const pid_t *const pTiddy,
-	const char *const pIsTiddyAlive)
+	struct goodies *goodies,
+	void *threadArgs)
 {
 	int ret;
 	
-	terminatePXEthread(thr, pmtx, pTiddy, pIsTiddyAlive);
+	terminatePXEthread(
+		&goodies->thr,
+		&goodies->tiddyMtx,
+		&goodies->tiddy,
+		&goodies->isTiddyAlive
+	);
+	free(threadArgs);
 	
-	ret = eglMakeCurrent(ed->d, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+	ret = eglMakeCurrent(
+		goodies->ed.d,
+		EGL_NO_SURFACE,
+		EGL_NO_SURFACE,
+		EGL_NO_CONTEXT
+	);
 	assert(ret == EGL_TRUE);
-	ret = eglDestroyContext(ed->d, ed->cxt);
+	ret = eglDestroyContext(goodies->ed.d, goodies->ed.cxt);
 	assert(ret != EGL_FALSE && ret != EGL_BAD_DISPLAY &&
 		ret != EGL_NOT_INITIALIZED && ret != EGL_BAD_CONTEXT);
-	ret = eglDestroySurface(ed->d, ed->s);
+	ret = eglDestroySurface(goodies->ed.d, goodies->ed.s);
 	assert(ret != EGL_FALSE && ret != EGL_BAD_DISPLAY &&
 		ret != EGL_NOT_INITIALIZED && ret != EGL_BAD_SURFACE);
-	ret = eglTerminate(ed->d);
+	ret = eglTerminate(goodies->ed.d);
 	assert(ret != EGL_FALSE && ret != EGL_BAD_DISPLAY);
 	
-	ret = XDestroyWindow(xd->d, xd->w);
+	ret = XDestroyWindow(goodies->xd.d, goodies->xd.w);
 	assert(ret != BadWindow);
-	XkbSetAutoRepeatRate(xd->d, XkbUseCoreKbd, xd->kbrTimeout, xd->kbrInterval);
-	ret = XCloseDisplay(xd->d);
+	XkbSetAutoRepeatRate(
+		goodies->xd.d,
+		XkbUseCoreKbd,
+		goodies->xd.kbrTimeout,
+		goodies->xd.kbrInterval
+	);
+	ret = XCloseDisplay(goodies->xd.d);
 	assert(ret != BadGC);
 
 	return true;
@@ -233,11 +264,13 @@ static void updateKeys(const XEvent *const e, keys *const k, mtx_t *const pmtx) 
 }
 
 struct pXEargs {
-	x_dat *const xd;
-	keys *const k;
-	mtx_t *const pmtx;
-	pid_t *ptiddy;
-	char *pIsTiddyAlive; 
+	x_dat *pxd;
+	keys *pk;
+	mtx_t *pTiddyMtx;
+	pid_t *pTiddy;
+	char *pIsTiddyAlive;
+	mtx_t *pResolutionMtx;
+	int *pResolutionWidth, *pResolutionHeight;
 };
 
 static int pumpXEvents(void *p) {
@@ -247,30 +280,41 @@ static int pumpXEvents(void *p) {
 	bool seenFirstEvent = false;
 	struct timespec prev = { 0 };
 
-	mutex_lock(args->pmtx);
-	*args->ptiddy = gettid();  // non-portable :(
-	mutex_unlock(args->pmtx);
+	mutex_lock(args->pTiddyMtx);
+	*args->pTiddy = gettid();  // non-portable :(
+	mutex_unlock(args->pTiddyMtx);
 	
 	for (;;) {
 		XEvent e = { 0 };
 		struct timespec now = { 0 };
 		
 		assert(TIME_UTC == timespec_get(&now, TIME_UTC));
-		if (elapsedTimeGreaterThanNS(&prev, &now, 1000000000)) {
+		if (elapsedTimeGreaterThanNS(&prev, &now, NSONE)) {
 			prev = now;
 			keyPresses = 0;
 		}
 		
-		XLockDisplay(args->xd->d);
-		mutex_lock(args->pmtx);
+		XLockDisplay(args->pxd->d);
+		mutex_lock(args->pTiddyMtx);
 		*args->pIsTiddyAlive = true;
-		mutex_unlock(args->pmtx);
-		XNextEvent(args->xd->d, &e);
-		XUnlockDisplay(args->xd->d);
+		mutex_unlock(args->pTiddyMtx);
+		XNextEvent(args->pxd->d, &e);
+		XWindowAttributes windowAttributes;
+		assert(0 != XGetWindowAttributes(
+			args->pxd->d,
+			args->pxd->w,
+			&windowAttributes
+		));
+		XUnlockDisplay(args->pxd->d);
+		
+		mutex_lock(args->pResolutionMtx);
+		*args->pResolutionWidth = windowAttributes.width;
+		*args->pResolutionHeight = windowAttributes.height;
+		mutex_unlock(args->pResolutionMtx);
 		
 		if (e.type != KeyPress && e.type != KeyRelease)
 			continue;
-		if (e.type == KeyPress && keyPresses++ > 25)
+		else if (e.type == KeyPress && keyPresses++ > 25)
 			fprintf(stderr, "DEBUG: key ignored b/c quota exceeded\n");
 		else {
 			assert(TIME_UTC == timespec_get(&now, TIME_UTC));
@@ -284,13 +328,13 @@ static int pumpXEvents(void *p) {
 				keyAge = approxX11time_sec - e.xkey.time/1000;
 			if (keyAge < 2) {
 				if (e.xkey.keycode == 24) {  // 'q'
-					mutex_lock(args->pmtx);
+					mutex_lock(args->pTiddyMtx);
 					*args->pIsTiddyAlive = false;
-					mtx_unlock(args->pmtx);
+					mtx_unlock(args->pTiddyMtx);
 					//assert(ret = thrd_success);  // XXX debug broken
 					return 0;
 				}
-				updateKeys(&e, args->k, args->pmtx);
+				updateKeys(&e, args->pk, args->pTiddyMtx);
 			} else
 				fprintf(stderr, "DEBUG: key age %llu, ignored\n",
 					(long long unsigned)keyAge);
@@ -313,70 +357,91 @@ static void waitForThreadToLaunch(mtx_t *pmtx, const char *const pIsTiddyAlive) 
 	}
 }
 
-static bool fn(void) {
-	keys k = { 0 };
-	thrd_t thr;
-	mtx_t tiddy_mtx;
-	pid_t tiddy = 1;  // Thread ID to DestroY
-	char isTiddyAlive = -1;  // >0 means alive
-	
-	egl_dat ed = initializeEgl();
-	x_dat xd = initializeXwin();
-	initializeSurface(&ed, &xd);
-	
-	glViewport(0, 0, 640, 640);
-	glEnable(GL_BLEND);
-	// https://gamedev.stackexchange.com/questions/32027/
-	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-	draw(&k);  // initial paint (before multithreading occurs)
-	eglSwapBuffers(ed.d, ed.s);
-	
-	int ret;
-	ret = mtx_init(&tiddy_mtx, mtx_plain);
-	assert(ret == thrd_success);
-	struct pXEargs pXEargs = (struct pXEargs){
-		&xd,
-		&k,
-		&tiddy_mtx,
-		&tiddy,
-		&isTiddyAlive
-	};
-	ret = thrd_create(&thr, pumpXEvents, &pXEargs);
-	assert(ret == thrd_success);
-	waitForThreadToLaunch(&tiddy_mtx, &isTiddyAlive);
-
+static void mainLoop(struct goodies *const goodies) {
 	struct timespec prev = { 0 };
 	uint64_t frames = 0;
 	for (;;) {
 		struct timespec now = { 0 };
 		assert(TIME_UTC == timespec_get(&now, TIME_UTC));
-		if (elapsedTimeGreaterThanNS(&prev, &now, 1000000000)) {
+		if (elapsedTimeGreaterThanNS(&prev, &now, NSONE)) {
 			prev = now;
 			fprintf(stderr, "DEBUG: %llu frames\n", (long long unsigned)frames);
 			frames = 0;
 		}
 
-		mutex_lock(&tiddy_mtx);
-		ret = draw(&k);
-		mutex_unlock(&tiddy_mtx);
-		if (!isTiddyAlive || !ret) {
-			cleanup(&ed, &xd, &thr, &tiddy_mtx, &tiddy, &isTiddyAlive);
-			return !isTiddyAlive;  // ???
-		}
+		mutex_lock(&goodies->tiddyMtx);
+		mutex_lock(&goodies->resolutionMtx);
+		int ret;
+		ret = draw(
+			&goodies->k,
+			&goodies->resolutionWidth,
+			&goodies->resolutionHeight
+		);
+		mutex_unlock(&goodies->resolutionMtx);
+		mutex_unlock(&goodies->tiddyMtx);
+		if (!goodies->isTiddyAlive || !ret)
+			return;
 		
-		eglSwapBuffers(ed.d, ed.s);
+		eglSwapBuffers(goodies->ed.d, goodies->ed.s);
 		frames++;
 	}
 	
-	assert(NULL);
-	return true;
+	must(false);
+	return;
+}
+
+static void *initialize(struct goodies *goodies) {
+	int ret;
+	
+	goodies->ed = initializeEgl();
+	ret = mtx_init(&goodies->resolutionMtx, mtx_plain);
+	assert(ret == thrd_success);
+	goodies->xd = initializeXwin(
+		&goodies->resolutionMtx,
+		&goodies->resolutionWidth,
+		&goodies->resolutionHeight
+	);
+	initializeSurface(&goodies->ed, &goodies->xd);
+	
+	glViewport(0, 0, 640, 640);
+	glEnable(GL_BLEND);
+	// https://gamedev.stackexchange.com/questions/32027/
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	
+	ret = mtx_init(&goodies->tiddyMtx, mtx_plain);
+	assert(ret == thrd_success);
+	struct pXEargs *const pXEargs = nnmalloc(sizeof(struct pXEargs));
+	pXEargs->pxd = &goodies->xd;
+	pXEargs->pk = &goodies->k;
+	pXEargs->pTiddyMtx = &goodies->tiddyMtx;
+	pXEargs->pTiddy = &goodies->tiddy;
+	pXEargs->pIsTiddyAlive = &goodies->isTiddyAlive;
+	pXEargs->pResolutionMtx = &goodies->resolutionMtx;
+	pXEargs->pResolutionWidth = &goodies->resolutionWidth;
+	pXEargs->pResolutionHeight = &goodies->resolutionHeight;
+	ret = thrd_create(&goodies->thr, pumpXEvents, pXEargs);
+	assert(ret == thrd_success);
+	waitForThreadToLaunch(&goodies->tiddyMtx, &goodies->isTiddyAlive);
+	
+	return pXEargs;
 }
 
 void terminate(void);
 
+struct goodies *initializeGoodies(struct goodies *goodies) {
+	goodies->tiddy = 1;
+	goodies->isTiddyAlive = -1;
+	goodies->resolutionWidth = 640;
+	goodies->resolutionHeight = 480;
+	return goodies;
+}
+
 int main(int argc, char *argv[]) {
 	argv[0][0] += argc - argc;
 	
-	fn();
+	struct goodies goodies = { 0 };
+	void *threadArgs = initialize(initializeGoodies(&goodies));
+	mainLoop(&goodies);
+	cleanup(&goodies, threadArgs);
 	terminate();
 }

@@ -1,11 +1,11 @@
+attribute vec2 windowResolution;
 attribute vec4 vertices;
 attribute vec2 tcoords;
 varying vec2 ytcoords;
 
 void main() {
-	vec4 scaled_vertices = vertices / vec4(320.0, -320.0, 320.0, 1.0);
-	scaled_vertices = scaled_vertices + vec4(-1.0, 0.5, 0.0, 0.0);
-	gl_Position = scaled_vertices;
-
+	vec4 vertices_scaled = vertices / vec4(windowResolution[0]/2.0, windowResolution[1]/2.0, 1.0, 1.0);
+	vec4 vertices_scaled_and_offset = vertices_scaled + vec4(-1.0, -1.0, 0.0, 0.0);
+	gl_Position = vertices_scaled_and_offset;
 	ytcoords = tcoords;
 }

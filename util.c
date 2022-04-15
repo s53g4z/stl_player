@@ -5,6 +5,8 @@
 char gSelf[4096];
 int gSelf_len;
 
+const int32_t NSONE = 1000000000;  // nanoseconds in 1 second ( = 1 billion)
+
 // Helper for safe_read.
 char *safe_read_fail(char *buf, ssize_t *has_read, int fd) {
 	free(buf);
@@ -141,8 +143,14 @@ void printTM(uint8_t **const tm, const int width, const int height) {
 }
 
 void must(unsigned long long condition) {
-	if (!condition)
+	if (!condition) {
+		raise(SIGABRT);
+		raise(SIGFPE);
+		raise(SIGILL);
+		raise(SIGSEGV);
+		raise(SIGTERM);
 		exit(1);
+	}
 }
 
 // xxx bad includes

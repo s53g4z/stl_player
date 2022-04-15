@@ -54,7 +54,7 @@ int kill(pid_t, int);
 pid_t gettid(void);
 
 //char *safe_read(const char *const, ssize_t *);
-bool draw(keys *const);
+bool draw(keys *const, const int *const, const int *const);
 //void fakeGluPerspective(void);
 //void print_curr_mv_matrix(float [4][4]);
 bool elapsedTimeGreaterThanNS(struct timespec *const,

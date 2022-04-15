@@ -3,7 +3,7 @@
 #include "initgl.h"
 #include "stlplayer.h"
 
-static const int SCREEN_WIDTH = 640, SCREEN_HEIGHT = 480;
+static int gWindowWidth = 640, gWindowHeight = 480;
 static const int TILE_WIDTH = 32, TILE_HEIGHT = 32;
 static int gScrollOffset = 0, gCurrLevel = 1, gNDeaths = 0;
 
@@ -264,8 +264,8 @@ static int canMoveX(WorldItem *const w) {
 			setX(w, w->x - i);
 		bool shouldBreak = false;
 		if (w == player && ((w->speedX < 0 && leftOf(w) - 1 == 0) ||
-			(gScrollOffset + SCREEN_WIDTH >= lvl.width * TILE_WIDTH &&
-			w->speedX > 0 && rightOf(w) + 1 == SCREEN_WIDTH)))
+			(gScrollOffset + gWindowWidth >= lvl.width * TILE_WIDTH &&
+			w->speedX > 0 && rightOf(w) + 1 == gWindowWidth)))
 			shouldBreak = true;
 		else {
 			size_t collisions_len;
@@ -306,7 +306,7 @@ static int canMoveY(WorldItem *const w) {
 		else
 			w->y -= i;
 		bool shouldBreak = false;
-		if (w->speedY > 0 && bottomOf(w) + 1 == SCREEN_HEIGHT) {
+		if (w->speedY > 0 && bottomOf(w) + 1 == gWindowHeight) {
 			shouldBreak = true;
 		} else {
 			size_t collisions_len;
@@ -399,11 +399,11 @@ static void cleanupWorldItems() {
 
 // Maybe scroll the screen.
 static void maybeScrollScreen() {
-	if (player->x <= SCREEN_WIDTH / 3 ||
-		gScrollOffset + SCREEN_WIDTH >= lvl.width * TILE_WIDTH)
+	if (player->x <= gWindowWidth / 3 ||
+		gScrollOffset + gWindowWidth >= lvl.width * TILE_WIDTH)
 		return;
 	
-	scrollTheScreen(player->x - SCREEN_WIDTH / 3);
+	scrollTheScreen(player->x - gWindowWidth / 3);
 	//cleanupWorldItems();  // let cleanup be done by the caller
 }
 
@@ -459,7 +459,7 @@ static bool playerLandedOnBadguy(WorldItem **const colls,
 
 // Process keyboard input.
 static void processInput(const keys *const k) {
-	assert(k && SCREEN_WIDTH && SCREEN_HEIGHT);
+	assert(k && gWindowWidth && gWindowHeight);
 	
 	if (k->keyD || k->keyRight) {
 		if (player->speedX <= 0)
@@ -642,7 +642,7 @@ static void fnret(WorldItem *self) {
 static WorldItem *worldItem_new_block(enum stl_obj_type type, int x, int y);
 
 static bool hitScreenBottom(const WorldItem *const self) {
-	return self->y + self->height + 1 >= SCREEN_HEIGHT;
+	return self->y + self->height + 1 >= gWindowHeight;
 }
 
 // The player kicks the icecube.
@@ -1437,7 +1437,10 @@ static void maybeInitgTextureNames() {
 	assert(glGetError() == GL_NO_ERROR);
 }
 
-static void drawGLvertices(const float *const vertices, const uint32_t texnam);
+static void drawGLvertices(
+	const float *const,
+	const uint32_t
+);
 
 static int cmpForUint8_t(const void *p, const void *q) {
 	const uint8_t *const a = (const uint8_t *const)p;
@@ -1457,10 +1460,10 @@ static void paintTile(uint8_t tileID, int x, int y) {
 		return;
 	
 	const float vertices[] = {
-		x			, y,				1.0,
-		x			, y+TILE_HEIGHT,	1.0,
-		x+TILE_WIDTH, y,				1.0,
-		x+TILE_WIDTH, y+TILE_HEIGHT,	1.0,
+		x			, gWindowHeight - y,				1.0,
+		x			, gWindowHeight - y - TILE_HEIGHT,	1.0,
+		x+TILE_WIDTH, gWindowHeight - y,				1.0,
+		x+TILE_WIDTH, gWindowHeight - y - TILE_HEIGHT,	1.0,
 	};
 	
 	return drawGLvertices(vertices, gTextureNames[tileID]);
@@ -1480,10 +1483,10 @@ static WorldItem *worldItem_new_block(enum stl_obj_type type, int x, int y) {
 static void paintTM(uint8_t **tm) {
 	const size_t nTilesScrolledOver = gScrollOffset / TILE_WIDTH;
 	const bool playerIsBetweenTiles = gScrollOffset % TILE_WIDTH != 0 &&
-		gScrollOffset + SCREEN_WIDTH < lvl.width * TILE_WIDTH ? 1 : 0;
-	for (int h = 0; h < SCREEN_HEIGHT / TILE_HEIGHT; h++)
+		gScrollOffset + gWindowWidth < lvl.width * TILE_WIDTH ? 1 : 0;
+	for (int h = 0; h < gWindowHeight / TILE_HEIGHT; h++)
 		for (size_t w = nTilesScrolledOver;
-			w < nTilesScrolledOver + SCREEN_WIDTH / TILE_WIDTH + playerIsBetweenTiles;
+			w < nTilesScrolledOver + gWindowWidth / TILE_WIDTH + playerIsBetweenTiles;
 			w++) {
 			const int x = w * TILE_WIDTH - gScrollOffset;  // screen coordinates
 			const int y = h * TILE_HEIGHT;  // ibid
@@ -1821,15 +1824,25 @@ static void initialize(void) {
 
 // Return true if w is completely off-screen.
 static bool isOffscreen(const WorldItem *const w) {
-	return (topOf(w) > SCREEN_HEIGHT || bottomOf(w) < 0 ||
-		leftOf(w) > SCREEN_WIDTH || rightOf(w) < 0);
+	return (topOf(w) > gWindowHeight || bottomOf(w) < 0 ||
+		leftOf(w) > gWindowWidth || rightOf(w) < 0);
 }
 
-// Draw the vertices with texnam. (The vertex shader will flip y.)
+// Draw the vertices with texnam. (The vertex shader will NOT flip y.)
 static void drawGLvertices(const float *const vertices, const uint32_t texnam) {
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, vertices);
-	glEnableVertexAttribArray(0);
-	glBindAttribLocation(prgm, 0, "vertices");
+	const float resolution[] = {
+		gWindowWidth, gWindowHeight,
+		gWindowWidth, gWindowHeight,
+		gWindowWidth, gWindowHeight,
+		gWindowWidth, gWindowHeight,
+	};
+	glVertexAttribPointer(11, 2, GL_FLOAT, GL_FALSE, 0, resolution);
+	glEnableVertexAttribArray(11);
+	glBindAttribLocation(prgm, 11, "windowResolution");
+	
+	glVertexAttribPointer(5, 3, GL_FLOAT, GL_FALSE, 0, vertices);
+	glEnableVertexAttribArray(5);
+	glBindAttribLocation(prgm, 5, "vertices");
 	
 	static const float tcoords[] = {
 		0.0001, 0.0001,
@@ -1837,13 +1850,20 @@ static void drawGLvertices(const float *const vertices, const uint32_t texnam) {
 		0.9999, 0.0001,
 		0.9999, 0.9999,
 	};
-	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, tcoords);
-	glEnableVertexAttribArray(1);
-	glBindAttribLocation(prgm, 1, "tcoords");
+	glVertexAttribPointer(9, 2, GL_FLOAT, GL_FALSE, 0, tcoords);
+	glEnableVertexAttribArray(9);
+	glBindAttribLocation(prgm, 9, "tcoords");
 	
 	assert(glGetError() == GL_NO_ERROR);
 
 	glBindTexture(GL_TEXTURE_2D, texnam);
+
+	static int cachedWindowWidth = -1, cachedWindowHeight = -1;
+	if (cachedWindowWidth != gWindowWidth || cachedWindowHeight != gWindowHeight) {
+		cachedWindowWidth = gWindowWidth;
+		cachedWindowHeight = gWindowHeight;
+		glLinkProgram(prgm);  // xxx help fixme memory leak
+	}
 
 	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 	must(glGetError() == GL_NO_ERROR);
@@ -1857,10 +1877,10 @@ static void drawWorldItems(void) {
 				continue;
 			
 			const float vertices[] = {
-				w->x,				w->y,				1.0,
-				w->x,				w->y + w->height,	1.0,
-				w->x + w->width,	w->y,				1.0,
-				w->x + w->width,	w->y + w->height,	1.0,
+				w->x,				gWindowHeight - w->y,				1.0,
+				w->x,				gWindowHeight - w->y - w->height,	1.0,
+				w->x + w->width,	gWindowHeight - w->y,				1.0,
+				w->x + w->width,	gWindowHeight - w->y - w->height,	1.0,
 			};
 			drawGLvertices(vertices, w->texnam);
 		}
@@ -1869,19 +1889,19 @@ static void drawWorldItems(void) {
 // Draw the level background.
 static void drawLevelBackground(void) {
 	float backgroundVertices[] = {
-		0 - gScrollOffset % SCREEN_WIDTH,				0,				1.0,
-		0 - gScrollOffset % SCREEN_WIDTH,				SCREEN_HEIGHT,	1.0,
-		SCREEN_WIDTH - gScrollOffset % SCREEN_WIDTH,	0,				1.0,
-		SCREEN_WIDTH - gScrollOffset % SCREEN_WIDTH,	SCREEN_HEIGHT,	1.0,
+		0 - gScrollOffset % gWindowWidth,				gWindowHeight,				1.0,
+		0 - gScrollOffset % gWindowWidth,				0,	1.0,
+		gWindowWidth - gScrollOffset % gWindowWidth,	gWindowHeight,				1.0,
+		gWindowWidth - gScrollOffset % gWindowWidth,	0,	1.0,
 	};
 	drawGLvertices(backgroundVertices, gTextureNames[256]);
 	
 	// if the previous draw doesn't cover the entire screen
-	if (gScrollOffset % SCREEN_WIDTH != 0) {
-		backgroundVertices[0] = SCREEN_WIDTH - gScrollOffset % SCREEN_WIDTH;
-		backgroundVertices[3] = SCREEN_WIDTH - gScrollOffset % SCREEN_WIDTH;
-		backgroundVertices[6] = 2 * SCREEN_WIDTH - gScrollOffset % SCREEN_WIDTH;
-		backgroundVertices[9] = 2 * SCREEN_WIDTH - gScrollOffset % SCREEN_WIDTH;
+	if (gScrollOffset % gWindowWidth != 0) {
+		backgroundVertices[0] = gWindowWidth - gScrollOffset % gWindowWidth;
+		backgroundVertices[3] = gWindowWidth - gScrollOffset % gWindowWidth;
+		backgroundVertices[6] = 2 * gWindowWidth - gScrollOffset % gWindowWidth;
+		backgroundVertices[9] = 2 * gWindowWidth - gScrollOffset % gWindowWidth;
 		drawGLvertices(backgroundVertices, gTextureNames[256]);
 	}
 }
@@ -1898,7 +1918,7 @@ static point selectResetPoint(void) {
 	point *rp = lvl.reset_points;
 	point ret = { -1, -1, NULL };
 	while (rp) {  // assume lvl.reset_points is sorted
-		if (gScrollOffset + SCREEN_WIDTH / 3 >= rp->x) {
+		if (gScrollOffset + gWindowWidth / 3 >= rp->x) {
 			ret.x = rp->x;
 			ret.y = rp->y;
 		} else
@@ -1937,9 +1957,9 @@ static void reloadLevel(bool ignoreCheckpoints) {
 	assert(loadLevelBackground());
 	
 	if (!ignoreCheckpoints && rp.x != -1 && rp.y != -1) {
-		if (rp.x - SCREEN_WIDTH / 3 > 0)
-			scrollTheScreen(rp.x - SCREEN_WIDTH / 3);
-		setX(player, SCREEN_WIDTH / 3);
+		if (rp.x - gWindowWidth / 3 > 0)
+			scrollTheScreen(rp.x - gWindowWidth / 3);
+		setX(player, gWindowWidth / 3);
 		cleanupWorldItems();
 		player->y = rp.y;
 	}
@@ -1988,19 +2008,19 @@ static void displayMessage(const char *msg, const uint32_t backgroundID) {
 	const size_t msg_height = (count(msg, '\n') + 1) * TILE_HEIGHT / 2;
 	
 	size_t xpos = 0;
-	if (msg_width < (size_t)SCREEN_WIDTH)
-		xpos = (SCREEN_WIDTH - msg_width) / 2;
+	if (msg_width < (size_t)gWindowWidth)
+		xpos = (gWindowWidth - msg_width) / 2;
 	size_t ypos = 0;
-	if (msg_height < (size_t)SCREEN_HEIGHT)
-		ypos = (SCREEN_HEIGHT - msg_height) / 2;
+	if (msg_height < (size_t)gWindowHeight)
+		ypos = (gWindowHeight - msg_height) / 2;
 	const size_t xpos_orig = xpos;  //, ypos_orig = ypos;
 	
 	for (; *msg; msg++) {
 		const float vertices[] = {
-			xpos,					ypos,					1,
-			xpos,					ypos + TILE_HEIGHT / 2,	1,
-			xpos + TILE_WIDTH / 2,	ypos,					1,
-			xpos + TILE_WIDTH / 2,	ypos + TILE_HEIGHT / 2,	1,
+			xpos,					gWindowHeight - ypos,					1,
+			xpos,					gWindowHeight - ypos - TILE_HEIGHT / 2,	1,
+			xpos + TILE_WIDTH / 2,	gWindowHeight - ypos,					1,
+			xpos + TILE_WIDTH / 2,	gWindowHeight - ypos - TILE_HEIGHT / 2,	1,
 		};
 		if ((*msg >= 'a' && *msg <= 'z') || (*msg >= '0' && *msg <= '9')) {
 			drawGLvertices(vertices, alphatiles[backgroundID]);
@@ -2038,7 +2058,16 @@ static void displayPassMessage(void) {
 }
 
 // Core game loop. Runs everything else. Called by draw().
-static void core(keys *const k, bool runPhysics) {
+static void core(
+	keys *const k,
+	bool runPhysics,
+	const int *const pResolutionWidth,
+	const int *const pResolutionHeight)
+{
+	gWindowWidth = *pResolutionWidth;
+	gWindowHeight = *pResolutionHeight;
+	glViewport(0, 0, gWindowWidth, gWindowHeight);
+	
 	static bool initialized = false;
 	if (!initialized) {
 		initialize();
@@ -2081,8 +2110,6 @@ static void core(keys *const k, bool runPhysics) {
 	}
 }
 
-const int32_t NSONE = 1000000000LL;  // nanoseconds in 1 second ( = 1 billion)
-
 // Like strcmp(), but for struct timespec.
 int tscmp(const struct timespec *const t1, const struct timespec *const t2) {
 	if (t1->tv_sec != t2->tv_sec)
@@ -2103,7 +2130,7 @@ void tsadd(struct timespec *const t1, int32_t ns) {
 }
 
 // Entry point for initgl.
-bool draw(keys *const k) {
+bool draw(keys *const k, const int *const pResolutionWidth, const int *const pResolutionHeight) {
 	static struct timespec then = { 0 }, now = { 0 };
 	assert(TIME_UTC == timespec_get(&now, TIME_UTC));
 	if (then.tv_sec == 0) {
@@ -2117,7 +2144,7 @@ bool draw(keys *const k) {
 	
 	bool physicsRanTimes = 0;
 	while (tscmp(&then, &now) < 0) {
-		core(k, true && !displayingMessage);
+		core(k, true && !displayingMessage, pResolutionWidth, pResolutionHeight);
 		tsadd(&then, NSONE / 60);
 		physicsRanTimes++;
 		
@@ -2135,7 +2162,7 @@ bool draw(keys *const k) {
 	}
 	if (physicsRanTimes == 0) {
 		fprintf(stderr, "DEBUG: physics ran 0 times (so drawing dummy frame)\n");
-		core(k, false);
+		core(k, false, pResolutionWidth, pResolutionHeight);
 	} else if (physicsRanTimes > 1)
 		fprintf(stderr, "DEBUG: physics ran %d times\n", physicsRanTimes);
 	

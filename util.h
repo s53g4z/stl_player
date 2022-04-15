@@ -11,12 +11,9 @@ struct Point {
 };
 typedef struct Point Point;
 
-//struct char_stack {
-	//char *arr;
-	//size_t arr_len;
-	//size_t arr_capacity;
-//};
-//typedef struct char_stack char_stack;
+extern const int32_t NSONE;  // nanoseconds in 1 second ( = 1 billion)
+
+void *nnmalloc(size_t);
 
 char *safe_read(const char *const filename, ssize_t *has_read);
 bool isWhitespace(char ch);
