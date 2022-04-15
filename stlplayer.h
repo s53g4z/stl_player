@@ -14,9 +14,9 @@ enum stl_obj_type {
 	STL_BRICK_DESTROYED,
 	STL_INVISIBLE,
 	STL_COIN,
-	STL_PLAYER,
-	STL_PLAYER_DEAD,
-	STL_PLAYER_ASCENDED,
+	STL_TUX,
+	STL_TUX_DEAD,
+	STL_TUX_ASCENDED,
 	STL_DEAD,
 	STL_DEAD_MRICEBLOCK,
 	STL_KICKED_MRICEBLOCK,
@@ -49,7 +49,7 @@ struct WorldItem {
 };
 typedef struct WorldItem WorldItem;
 
-typedef WorldItem Player;
+typedef WorldItem Tux;
 
 struct stl_obj {
 	enum stl_obj_type type;

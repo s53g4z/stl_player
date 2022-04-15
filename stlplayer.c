@@ -3,7 +3,7 @@
 #include "initgl.h"
 #include "stlplayer.h"
 
-static int gWindowWidth = 640, gWindowHeight = 480;
+static int gWindowWidth = -1, gWindowHeight = -1;
 static const int TILE_WIDTH = 32, TILE_HEIGHT = 32;
 static int gScrollOffset = 0, gCurrLevel = 1, gNDeaths = 0;
 
@@ -18,13 +18,13 @@ static size_t gBuckets_len;
 
 static stl lvl;
 
-static Player *player;
-static WorldItem *gPlayerCarry;
+static Tux *tux;
+static WorldItem *gTuxCarry;
 
 static const float MRICEBLOCK_KICKSPEED = 8;
-static const float PLAYER_BOUNCE_SPEED = -8;
-static const float PLAYER_JUMP_SPEED = -8;
-static const float PLAYER_RUN_SPEED = 6;
+static const float TUX_BOUNCE_SPEED = -8;
+static const float TUX_JUMP_SPEED = -8;
+static const float TUX_RUN_SPEED = 6;
 static const float BOUNCINGSNOWBALL_JUMP_SPEED = -7;
 static const float FLYINGSNOWBALL_HOVER_SPEED = -2;
 static float BADGUY_X_SPEED = -2;
@@ -263,7 +263,7 @@ static int canMoveX(WorldItem *const w) {
 		else
 			setX(w, w->x - i);
 		bool shouldBreak = false;
-		if (w == player && ((w->speedX < 0 && leftOf(w) - 1 == 0) ||
+		if (w == tux && ((w->speedX < 0 && leftOf(w) - 1 == 0) ||
 			(gScrollOffset + gWindowWidth >= lvl.width * TILE_WIDTH &&
 			w->speedX > 0 && rightOf(w) + 1 == gWindowWidth)))
 			shouldBreak = true;
@@ -399,11 +399,11 @@ static void cleanupWorldItems() {
 
 // Maybe scroll the screen.
 static void maybeScrollScreen() {
-	if (player->x <= gWindowWidth / 3 ||
+	if (tux->x <= gWindowWidth / 3 ||
 		gScrollOffset + gWindowWidth >= lvl.width * TILE_WIDTH)
 		return;
 	
-	scrollTheScreen(player->x - gWindowWidth / 3);
+	scrollTheScreen(tux->x - gWindowWidth / 3);
 	//cleanupWorldItems();  // let cleanup be done by the caller
 }
 
@@ -414,14 +414,14 @@ static void wiSwapTextures(WorldItem *const w) {
 	w->texnam2 = tmp;
 }
 
-static bool gPlayerLastDirectionWasRight = true;
+static bool gTuxLastDirectionWasRight = true;
 
-// Return true if player landed on a surface.
-static bool playerLandedOnSurface(WorldItem **const colls,
+// Return true if tux landed on a surface.
+static bool tuxLandedOnSurface(WorldItem **const colls,
 	const size_t colls_len) {
 	for (size_t i = 0; i < colls_len; i++) {
 		const WorldItem *const coll = colls[i];
-		if (bottomOf(player) + 1 != topOf(coll))
+		if (bottomOf(tux) + 1 != topOf(coll))
 			continue;
 		switch (coll->type) {
 			case STL_BRICK:
@@ -435,12 +435,12 @@ static bool playerLandedOnSurface(WorldItem **const colls,
 	return false;
 }
 
-// Return true if player landed on a badguy.
-static bool playerLandedOnBadguy(WorldItem **const colls,
+// Return true if tux landed on a badguy.
+static bool tuxLandedOnBadguy(WorldItem **const colls,
 	const size_t colls_len) {
 	for (size_t i = 0; i < colls_len; i++) {
 		const WorldItem *const coll = colls[i];
-		if (bottomOf(player) + 1 != topOf(coll))
+		if (bottomOf(tux) + 1 != topOf(coll))
 			continue;
 		switch (coll->type) {
 			case SNOWBALL:
@@ -462,49 +462,49 @@ static void processInput(const keys *const k) {
 	assert(k && gWindowWidth && gWindowHeight);
 	
 	if (k->keyD || k->keyRight) {
-		if (player->speedX <= 0)
-			player->speedX = 0.33;
+		if (tux->speedX <= 0)
+			tux->speedX = 0.33;
 		else
-			player->speedX *= 2;
-		if (player->speedX > fabs(PLAYER_RUN_SPEED))
-			player->speedX = fabs(PLAYER_RUN_SPEED);
+			tux->speedX *= 2;
+		if (tux->speedX > fabs(TUX_RUN_SPEED))
+			tux->speedX = fabs(TUX_RUN_SPEED);
 		
-		setX(player, player->x + canMoveTo(player, GDIRECTION_HORIZ));
-		if (!gPlayerLastDirectionWasRight)
-			wiSwapTextures(player);
-		gPlayerLastDirectionWasRight = true;
+		setX(tux, tux->x + canMoveTo(tux, GDIRECTION_HORIZ));
+		if (!gTuxLastDirectionWasRight)
+			wiSwapTextures(tux);
+		gTuxLastDirectionWasRight = true;
 	}
 	if (k->keyA || k->keyLeft) {
-		if (player->speedX >= 0)
-			player->speedX = -0.33;
+		if (tux->speedX >= 0)
+			tux->speedX = -0.33;
 		else
-			player->speedX *= 2;
-		assert(PLAYER_RUN_SPEED != INT_MIN);
-		if (player->speedX < -fabs(PLAYER_RUN_SPEED))
-			player->speedX = -fabs(PLAYER_RUN_SPEED);
+			tux->speedX *= 2;
+		assert(TUX_RUN_SPEED != INT_MIN);
+		if (tux->speedX < -fabs(TUX_RUN_SPEED))
+			tux->speedX = -fabs(TUX_RUN_SPEED);
 		
-		setX(player, player->x + canMoveTo(player, GDIRECTION_HORIZ));
-		if (gPlayerLastDirectionWasRight)
-			wiSwapTextures(player);
-		gPlayerLastDirectionWasRight = false;
+		setX(tux, tux->x + canMoveTo(tux, GDIRECTION_HORIZ));
+		if (gTuxLastDirectionWasRight)
+			wiSwapTextures(tux);
+		gTuxLastDirectionWasRight = false;
 	}
 	if (!k->keyD && !k->keyRight && !k->keyA && !k->keyLeft) {  // slow down
-		player->speedX *= 0.66;
-		if (fabs(player->speedX) < 0.1)
-			player->speedX = 0;
-		setX(player, player->x + canMoveTo(player, GDIRECTION_HORIZ));
+		tux->speedX *= 0.66;
+		if (fabs(tux->speedX) < 0.1)
+			tux->speedX = 0;
+		setX(tux, tux->x + canMoveTo(tux, GDIRECTION_HORIZ));
 	}
 	
 	static bool jumped = true;
 	size_t colls_len;
-	WorldItem **const colls = isCollidingWith(player, &colls_len,
+	WorldItem **const colls = isCollidingWith(tux, &colls_len,
 		GDIRECTION_BOTH);
-	bool onBadguy = playerLandedOnBadguy(colls, colls_len);
-	bool onSurface = playerLandedOnSurface(colls, colls_len);
+	bool onBadguy = tuxLandedOnBadguy(colls, colls_len);
+	bool onSurface = tuxLandedOnSurface(colls, colls_len);
 	// reset on all keys up
 	if (!k->keyW && !k->keyUp && !k->keySpace) {
-		if (player->speedY < 0)
-			player->speedY /= 2;
+		if (tux->speedY < 0)
+			tux->speedY /= 2;
 		if (onSurface)
 			jumped = false;
 	}
@@ -512,19 +512,19 @@ static void processInput(const keys *const k) {
 		jumped = false;
 	if (k->keyW || k->keyUp || k->keySpace) {
 		if (!jumped && (onBadguy || onSurface)) {
-			player->speedY = PLAYER_JUMP_SPEED;
-			//player->y += canMoveTo(player, GDIRECTION_VERT);
+			tux->speedY = TUX_JUMP_SPEED;
+			//tux->y += canMoveTo(tux, GDIRECTION_VERT);
 			jumped = true;
 		}
 	}
 	free(colls);
 	
 	// 0 means not carrying, 1 means could carry, 2 means carrying something
-	if (k->keyCTRL && player->state == 0) {
-		player->state = 1;
+	if (k->keyCTRL && tux->state == 0) {
+		tux->state = 1;
 	} else if (!k->keyCTRL) {
-		player->state = 0;
-		gPlayerCarry = 0;
+		tux->state = 0;
+		gTuxCarry = 0;
 	}
 	
 	maybeScrollScreen();
@@ -645,33 +645,33 @@ static bool hitScreenBottom(const WorldItem *const self) {
 	return self->y + self->height + 1 >= gWindowHeight;
 }
 
-// The player kicks the icecube.
-static void playerKicks(WorldItem *coll) {
+// The tux kicks the icecube.
+static void tuxKicks(WorldItem *coll) {
 	assert(coll->type == STL_DEAD_MRICEBLOCK);
 	coll->type = STL_KICKED_MRICEBLOCK;
 	coll->gravity = true;
 	
-	if (player->speedY >= 0 && bottomOf(player) + 1 == topOf(coll))
-		player->speedY = PLAYER_BOUNCE_SPEED;  // bounce off top of icecube
+	if (tux->speedY >= 0 && bottomOf(tux) + 1 == topOf(coll))
+		tux->speedY = TUX_BOUNCE_SPEED;  // bounce off top of icecube
 	
-	// player is left of the iceblock
-	if (player->x + player->width / 2 < coll->x + coll->width / 2) {
-		setX(coll, player->x + player->width);
+	// tux is left of the iceblock
+	if (tux->x + tux->width / 2 < coll->x + coll->width / 2) {
+		setX(coll, tux->x + tux->width);
 		if (coll->speedX < 0)
 			wiSwapTextures(coll);
 		coll->speedX = MRICEBLOCK_KICKSPEED;  // iceblock goes right
-	} else {  // player is right of the iceblock
-		setX(coll, player->x - coll->width);
+	} else {  // tux is right of the iceblock
+		setX(coll, tux->x - coll->width);
 		if (coll->speedX > 0)
 			wiSwapTextures(coll);
 		coll->speedX = -MRICEBLOCK_KICKSPEED;  // iceblock goes left
 	}
 }
 
-static void killPlayer() {
+static void killTux() {
 	fprintf(stderr, "You died.\n");
-	player->type = STL_PLAYER_DEAD;
-	gPlayerCarry = NULL;
+	tux->type = STL_TUX_DEAD;
+	gTuxCarry = NULL;
 }
 
 // Turn around a WorldItem (that has two texnams). Relatively cheap fn.
@@ -802,17 +802,17 @@ static WorldItem *worldItem_new_spiky(int x, int y, bool patrol) {
 	return spiky;
 }
 
-// Callback for player frame.
-static void fnpl(WorldItem *self) {
+// Callback for tux frame.
+static void fnTux(WorldItem *self) {
 	if (hitScreenBottom(self)) {
-		killPlayer();
+		killTux();
 	}
-	if (gPlayerCarry) {
+	if (gTuxCarry) {
 		if (self->speedX < 0)
-			setX(gPlayerCarry, self->x - gPlayerCarry->width);
+			setX(gTuxCarry, self->x - gTuxCarry->width);
 		else if (self->speedX > 0)
-			setX(gPlayerCarry, self->x + self->width);
-		gPlayerCarry->y = self->y;
+			setX(gTuxCarry, self->x + self->width);
+		gTuxCarry->y = self->y;
 	}
 
 	size_t collisions_len;
@@ -825,11 +825,11 @@ static void fnpl(WorldItem *self) {
 			case MONEY:  // jumpy
 			case JUMPY:
 			case SPIKY:
-				killPlayer();
+				killTux();
 				break;
 			case MRICEBLOCK:
 				if (self->speedY >= 0)
-					self->speedY = PLAYER_BOUNCE_SPEED;
+					self->speedY = TUX_BOUNCE_SPEED;
 				if (bottomOf(self) - topOf(colls[i]) < (TILE_HEIGHT - 2) / 3) {
 					// todo have a fixed set of texnams to index into
 					colls[i]->type = STL_DEAD_MRICEBLOCK;
@@ -843,38 +843,38 @@ static void fnpl(WorldItem *self) {
 						wiSwapTextures(colls[i]);
 					}
 				} else
-					killPlayer();
+					killTux();
 				break;
 			case STL_DEAD_MRICEBLOCK:  // just sitting there
 				if (self->state == 0) {
 					colls[i]->gravity = true;
-					playerKicks(colls[i]);
+					tuxKicks(colls[i]);
 				} else if (self->state == 1) {
 					colls[i]->gravity = false;
-					if (self->speedX > 0)  // player is going right
+					if (self->speedX > 0)  // tux is going right
 						setX(colls[i], self->x + self->width / 2);
-					else if (self->speedX < 0)  // player is going left
+					else if (self->speedX < 0)  // tux is going left
 						setX(colls[i], self->x - self->width / 2);
 					colls[i]->y = self->y;
 					self->state = 2;
-					gPlayerCarry = colls[i];
+					gTuxCarry = colls[i];
 				}
 				break;
 			case STL_KICKED_MRICEBLOCK:
 				if (self->speedY >= 0)
-					self->speedY = PLAYER_BOUNCE_SPEED;
+					self->speedY = TUX_BOUNCE_SPEED;
 				if (bottomOf(self) + 1 == topOf(colls[i]))
 					colls[i]->type = STL_DEAD_MRICEBLOCK;
 				else if (leftOf(self) - 1 == rightOf(colls[i]) ||
 					rightOf(self) + 1 == leftOf(colls[i])) {
 					fprintf(stderr, "You died.\n");
-					self->type = STL_PLAYER_DEAD;
+					self->type = STL_TUX_DEAD;
 				}
 				break;
 			case STALACTITE:
 				if (topOf(self) - 1 == bottomOf(colls[i])) {
 					fprintf(stderr, "You died.\n");
-					self->type = STL_PLAYER_DEAD;
+					self->type = STL_TUX_DEAD;
 				}
 				break;
 			case SNOWBALL:
@@ -884,7 +884,7 @@ static void fnpl(WorldItem *self) {
 			case FLYINGSNOWBALL:
 				if (bottomOf(self) + 1 == topOf(colls[i])) {
 					if (self->speedY >= 0)
-						self->speedY = PLAYER_BOUNCE_SPEED;  // bounce off corpse
+						self->speedY = TUX_BOUNCE_SPEED;  // bounce off corpse
 					if (colls[i]->type == STL_BOMB) {
 						colls[i]->type = STL_BOMB_TICKING;
 						assert(colls[i]->speedX != INT_MIN);
@@ -898,12 +898,12 @@ static void fnpl(WorldItem *self) {
 					leftOf(self) - 1 == rightOf(colls[i]) ||
 					rightOf(self) + 1 == leftOf(colls[i])) {
 					fprintf(stderr, "You died.\n");
-					self->type = STL_PLAYER_DEAD;
+					self->type = STL_TUX_DEAD;
 				}
 				break;
 			case STL_BOMB_EXPLODING:
 				fprintf(stderr, "You died.\n");
-				self->type = STL_PLAYER_DEAD;
+				self->type = STL_TUX_DEAD;
 				break;
 			case STL_BONUS:
 				if (colls[i]->state == 1 &&  // bonus is active
@@ -963,7 +963,7 @@ static void fnpl(WorldItem *self) {
 				break;
 			case STL_WIN:
 				fprintf(stderr, "You win!\n");
-				self->type = STL_PLAYER_ASCENDED;
+				self->type = STL_TUX_ASCENDED;
 				break;  // next level todo
 			case STL_INVISIBLE:
 				if (colls[i]->state == 1 &&
@@ -973,7 +973,7 @@ static void fnpl(WorldItem *self) {
 				}
 				break;
 			//default:
-				//fprintf(stderr, "WARN: fnpl() unhandled case\n");
+				//fprintf(stderr, "WARN: fnTux() unhandled case\n");
 				//break;
 		}
 	}
@@ -1011,9 +1011,9 @@ static void iceDestroyObstacles(WorldItem *const self) {
 	free(colls);
 }
 
-static void deadIceOnPlayerHandleCollisions(void) {
+static void deadIceOnTuxHandleCollisions(void) {
 	size_t colls_len;
-	WorldItem **colls = isCollidingWith(gPlayerCarry, &colls_len,
+	WorldItem **colls = isCollidingWith(gTuxCarry, &colls_len,
 		GDIRECTION_BOTH);
 	for (size_t i = 0; i < colls_len; i++) {
 		switch (colls[i]->type) {
@@ -1027,13 +1027,13 @@ static void deadIceOnPlayerHandleCollisions(void) {
 			case FLYINGSNOWBALL:
 			case MONEY:
 			case JUMPY:
-				gPlayerCarry->type = STL_DEAD;
+				gTuxCarry->type = STL_DEAD;
 				colls[i]->type = STL_DEAD;
 		}
 	}
-	if (gPlayerCarry->type == STL_DEAD) {
-		player->state = 0;
-		gPlayerCarry = NULL;
+	if (gTuxCarry->type == STL_DEAD) {
+		tux->state = 0;
+		gTuxCarry = NULL;
 	}
 }
 
@@ -1043,8 +1043,8 @@ static void fniceblock(WorldItem *const self) {
 		return;
 	}
 	if (self->type == STL_DEAD_MRICEBLOCK) {
-		if (self == gPlayerCarry) {
-			deadIceOnPlayerHandleCollisions();
+		if (self == gTuxCarry) {
+			deadIceOnTuxHandleCollisions();
 		}
 		// don't move around
 		return;
@@ -1093,8 +1093,8 @@ static void bombHandleExplosionCollisions(WorldItem *const self) {
 	for (size_t i = 0; i < collisions_len; i++) {
 		WorldItem *const coll = colls[i];
 		switch (coll->type) {
-			case STL_PLAYER:
-				killPlayer();
+			case STL_TUX:
+				killTux();
 				break;
 			case MRICEBLOCK:
 			case STL_DEAD_MRICEBLOCK:
@@ -1140,9 +1140,9 @@ static void fnbomb(WorldItem *const self) {
 	}
 	
 	if (self->type == STL_BOMB_TICKING) {
-		// chase the player
-		if ((player->x < self->x && self->speedX > 0) ||
-			(player->x > self->x && self->speedX < 0)) {
+		// chase the tux
+		if ((tux->x < self->x && self->speedX > 0) ||
+			(tux->x > self->x && self->speedX < 0)) {
 			assert(self->speedX != INT_MIN);
 			self->speedX *= -1;
 			wiSwapTextures(self);
@@ -1180,9 +1180,9 @@ static void fnflyingsnowball(WorldItem *const self) {
 }
 
 static void fnstalactite(WorldItem *const self) {
-	int playerCenterX = player->x + player->width / 2;
+	int tuxCenterX = tux->x + tux->width / 2;
 	int selfCenterX = self->x + self->width / 2;
-	if (abs(selfCenterX - playerCenterX) > 4 * TILE_WIDTH)
+	if (abs(selfCenterX - tuxCenterX) > 4 * TILE_WIDTH)
 		return;
 	
 	//static int framesWaited = 0;
@@ -1210,11 +1210,11 @@ static void fnjumpy(WorldItem *const self) {
 
 // Run the frame functions of elements of worldItems.
 static void applyFrame() {
-	fnpl(player);  // the player's callback frame must be run first
+	fnTux(tux);  // the tux's callback frame must be run first
 
 	for (size_t i = 0; i < gBuckets_len; i++)
 		for (WorldItem *curr = gBuckets[i]->next; curr; curr = curr->next) {
-			if (curr == player)
+			if (curr == tux)
 				continue;
 			curr->frame(curr);
 		}
@@ -1482,11 +1482,11 @@ static WorldItem *worldItem_new_block(enum stl_obj_type type, int x, int y) {
 // Draw some nice (non-interactive) scenery.
 static void paintTM(uint8_t **tm) {
 	const size_t nTilesScrolledOver = gScrollOffset / TILE_WIDTH;
-	const bool playerIsBetweenTiles = gScrollOffset % TILE_WIDTH != 0 &&
+	const bool tuxIsBetweenTiles = gScrollOffset % TILE_WIDTH != 0 &&
 		gScrollOffset + gWindowWidth < lvl.width * TILE_WIDTH ? 1 : 0;
 	for (int h = 0; h < gWindowHeight / TILE_HEIGHT; h++)
 		for (size_t w = nTilesScrolledOver;
-			w < nTilesScrolledOver + gWindowWidth / TILE_WIDTH + playerIsBetweenTiles;
+			w < nTilesScrolledOver + gWindowWidth / TILE_WIDTH + tuxIsBetweenTiles;
 			w++) {
 			const int x = w * TILE_WIDTH - gScrollOffset;  // screen coordinates
 			const int y = h * TILE_HEIGHT;  // ibid
@@ -1662,10 +1662,10 @@ static bool loadLevel(const char *const level_filename) {
 	stlPrinter(&lvl);
 	
 	initBuckets();
-	player = worldItem_new(STL_PLAYER, lvl.start_pos_x, lvl.start_pos_y,
-		TILE_WIDTH / 3 * 2, TILE_HEIGHT - 2, 0, 1, true, fnpl, false,
+	tux = worldItem_new(STL_TUX, lvl.start_pos_x, lvl.start_pos_y,
+		TILE_WIDTH / 3 * 2, TILE_HEIGHT - 2, 0, 1, true, fnTux, false,
 		gObjTextureNames[STL_TUX_LEFT], gObjTextureNames[STL_TUX_RIGHT]);
-	addToBuckets(player);
+	addToBuckets(tux);
 	
 	loadLevelObjects();
 	loadLevelInteractives();
@@ -1804,7 +1804,7 @@ static void initialize_alphatiles(void) {
 	assert(glGetError() == GL_NO_ERROR);
 }
 
-// Initialize stl_player. Must run exactly once.
+// Initialize stl_tux. Must run exactly once.
 static void initialize(void) {
 	findSelfOnLinux();
 	
@@ -1913,7 +1913,7 @@ static void clearScreen(void) {
 	drawLevelBackground();
 }
 
-// Select the furthest reset point the player has passed in the level.
+// Select the furthest reset point the tux has passed in the level.
 static point selectResetPoint(void) {
 	point *rp = lvl.reset_points;
 	point ret = { -1, -1, NULL };
@@ -1959,12 +1959,12 @@ static void reloadLevel(bool ignoreCheckpoints) {
 	if (!ignoreCheckpoints && rp.x != -1 && rp.y != -1) {
 		if (rp.x - gWindowWidth / 3 > 0)
 			scrollTheScreen(rp.x - gWindowWidth / 3);
-		setX(player, gWindowWidth / 3);
+		setX(tux, gWindowWidth / 3);
 		cleanupWorldItems();
-		player->y = rp.y;
+		tux->y = rp.y;
 	}
 	
-	gPlayerLastDirectionWasRight = true;  // player starts facing right
+	gTuxLastDirectionWasRight = true;  // tux starts facing right
 }
 
 // Perform a basic sanity check on buckets.
@@ -2089,7 +2089,7 @@ static void core(
 	paintTM(lvl.foregroundtm);
 	drawWorldItems();
 	
-	if (player->type == STL_PLAYER_DEAD) {  // reload the current level
+	if (tux->type == STL_TUX_DEAD) {  // reload the current level
 		displayDeathMessage();
 		displayingMessage = true;
 		if (k->keyEnter) {
@@ -2098,7 +2098,7 @@ static void core(
 				gNDeaths++;
 			reloadLevel(false);
 		}
-	} else if (player->type == STL_PLAYER_ASCENDED) {  // reload the next level
+	} else if (tux->type == STL_TUX_ASCENDED) {  // reload the next level
 		displayPassMessage();
 		displayingMessage = true;
 		if (k->keyEnter) {
