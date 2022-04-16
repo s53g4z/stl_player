@@ -3,7 +3,7 @@
 #include "initgl.h"
 #include "stlplayer.h"
 
-static int gWindowWidth = -1, gWindowHeight = -1;
+static const int gWindowWidth = 640, gWindowHeight = 480;
 static const int TILE_WIDTH = 32, TILE_HEIGHT = 32;
 static int gScrollOffset = 0, gCurrLevel = 1, gNDeaths = 0;
 
@@ -1291,8 +1291,8 @@ static void initGLTextureNam(const uint32_t texnam, const char *const imgnam,
 	//     ernstdh/web/common/lectures/summary_opengl-texture-mapping.php
 	//glActiveTexture(GL_TEXTURE0 + w->texunit);  bug
 	glBindTexture(GL_TEXTURE_2D, texnam);
-	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
 	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 	int imgformat = GL_RGB;
@@ -1460,10 +1460,10 @@ static void paintTile(uint8_t tileID, int x, int y) {
 		return;
 	
 	const float vertices[] = {
-		x			, gWindowHeight - y,				1.0,
-		x			, gWindowHeight - y - TILE_HEIGHT,	1.0,
-		x+TILE_WIDTH, gWindowHeight - y,				1.0,
-		x+TILE_WIDTH, gWindowHeight - y - TILE_HEIGHT,	1.0,
+		x			, y,				1.0,
+		x			, y-TILE_HEIGHT,	1.0,
+		x+TILE_WIDTH, y,				1.0,
+		x+TILE_WIDTH, y-TILE_HEIGHT,	1.0,
 	};
 	
 	return drawGLvertices(vertices, gTextureNames[tileID]);
@@ -1488,8 +1488,8 @@ static void paintTM(uint8_t **tm) {
 		for (size_t w = nTilesScrolledOver;
 			w < nTilesScrolledOver + gWindowWidth / TILE_WIDTH + tuxIsBetweenTiles;
 			w++) {
-			const int x = w * TILE_WIDTH - gScrollOffset;  // screen coordinates
-			const int y = h * TILE_HEIGHT;  // ibid
+			const int x = w * TILE_WIDTH - gScrollOffset;  // window coordinates
+			const int y = gWindowHeight - h * TILE_HEIGHT;  // ibid
 			paintTile(tm[h][w], x, y);
 		}
 }
@@ -1813,9 +1813,9 @@ static void initialize(void) {
 	
 	assert(populateGOTN());
 	
-	const char *const kStartingLevel = "gpl/levels/level26.stl";
-	assert(loadLevel(kStartingLevel));  // xxx	
-	gCurrLevel = 26;  // hack for debugging xxx
+	const char *const kStartingLevel = "gpl/levels/level1.stl";
+	assert(loadLevel(kStartingLevel));  // xxx
+	gCurrLevel = 1;  // hack for debugging xxx
 	
 	assert(loadLevelBackground());
 	
@@ -1857,12 +1857,11 @@ static void drawGLvertices(const float *const vertices, const uint32_t texnam) {
 	assert(glGetError() == GL_NO_ERROR);
 
 	glBindTexture(GL_TEXTURE_2D, texnam);
-
-	static int cachedWindowWidth = -1, cachedWindowHeight = -1;
-	if (cachedWindowWidth != gWindowWidth || cachedWindowHeight != gWindowHeight) {
-		cachedWindowWidth = gWindowWidth;
-		cachedWindowHeight = gWindowHeight;
-		glLinkProgram(prgm);  // xxx help fixme memory leak
+	
+	static bool firstRun = true;
+	if (firstRun) {
+		firstRun = false;
+		glLinkProgram(prgm);
 	}
 
 	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
@@ -1889,10 +1888,10 @@ static void drawWorldItems(void) {
 // Draw the level background.
 static void drawLevelBackground(void) {
 	float backgroundVertices[] = {
-		0 - gScrollOffset % gWindowWidth,				gWindowHeight,				1.0,
-		0 - gScrollOffset % gWindowWidth,				0,	1.0,
-		gWindowWidth - gScrollOffset % gWindowWidth,	gWindowHeight,				1.0,
-		gWindowWidth - gScrollOffset % gWindowWidth,	0,	1.0,
+		0 - gScrollOffset % gWindowWidth,				gWindowHeight,	1.0,
+		0 - gScrollOffset % gWindowWidth,				0,				1.0,
+		gWindowWidth - gScrollOffset % gWindowWidth,	gWindowHeight,	1.0,
+		gWindowWidth - gScrollOffset % gWindowWidth,	0,				1.0,
 	};
 	drawGLvertices(backgroundVertices, gTextureNames[256]);
 	
@@ -1908,7 +1907,8 @@ static void drawLevelBackground(void) {
 
 // Clear the entire screen with a solid color.
 static void clearScreen(void) {
-	glClearColor(30.0/255, 85.0/255, 150.0/255, 1);  // light blue
+	//glClearColor(30.0/255, 85.0/255, 150.0/255, 1);  // light blue
+	glClearColor(0, 0, 0, 1);
 	glClear(GL_COLOR_BUFFER_BIT);
 	drawLevelBackground();
 }
@@ -2057,6 +2057,29 @@ static void displayPassMessage(void) {
 	free(msg);
 }
 
+void setGLViewport(
+	const int *const pResolutionWidth,
+	const int *const pResolutionHeight)
+{
+	if (*pResolutionWidth < *pResolutionHeight) {
+		const int scaledHeight = *pResolutionWidth * 3.0 / 4;
+		glViewport(
+			0,
+			(*pResolutionHeight - scaledHeight) / 2,
+			*pResolutionWidth,
+			scaledHeight
+		);
+	} else {  // width >= height
+		const int scaledWidth = *pResolutionHeight * 4.0 / 3;
+		glViewport(
+			(*pResolutionWidth - scaledWidth) / 2,
+			0,
+			scaledWidth,
+			*pResolutionHeight
+		);
+	}
+}
+
 // Core game loop. Runs everything else. Called by draw().
 static void core(
 	keys *const k,
@@ -2064,9 +2087,8 @@ static void core(
 	const int *const pResolutionWidth,
 	const int *const pResolutionHeight)
 {
-	gWindowWidth = *pResolutionWidth;
-	gWindowHeight = *pResolutionHeight;
-	glViewport(0, 0, gWindowWidth, gWindowHeight);
+	assert(pResolutionWidth && pResolutionHeight);
+	setGLViewport(pResolutionWidth, pResolutionHeight);
 	
 	static bool initialized = false;
 	if (!initialized) {

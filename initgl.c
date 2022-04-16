@@ -403,7 +403,8 @@ static void *initialize(struct goodies *goodies) {
 	);
 	initializeSurface(&goodies->ed, &goodies->xd);
 	
-	glViewport(0, 0, 640, 640);
+	// The thread hasn't been created yet, so can use w/out locking a mutex.
+	glViewport(0, 0, goodies->resolutionWidth, goodies->resolutionHeight);
 	glEnable(GL_BLEND);
 	// https://gamedev.stackexchange.com/questions/32027/
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -431,8 +432,8 @@ void terminate(void);
 struct goodies *initializeGoodies(struct goodies *goodies) {
 	goodies->tiddy = 1;
 	goodies->isTiddyAlive = -1;
-	goodies->resolutionWidth = 640;
-	goodies->resolutionHeight = 480;
+	goodies->resolutionWidth = 1280;
+	goodies->resolutionHeight = 960;
 	return goodies;
 }
 
