@@ -15,7 +15,7 @@ Run `./build.sh` to build. The single executable program emitted is the SuperTux
 
 ## How to Play
 
-Use WASD or arrow keys to move. Holding CTRL allows stunned ice cubes to be picked up. Press q to quit the game.
+Use WASD or arrow keys to move. Holding CTRL allows stunned ice cubes to be picked up. Press Esc to quit the game.
 
 The objective of the game is to make it to the goal at the end of each (side-scrolling) level.
 
