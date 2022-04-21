@@ -1342,9 +1342,9 @@ static void maybeInitgTextureNames() {
 	initGLTextureNam(gTextureNames[24], "textures/background7.data", false, true);
 	initGLTextureNam(gTextureNames[25], "textures/background8.data", false, true);
 	initGLTextureNam(gTextureNames[26], "textures/bonus2.data", false, true);
-	initGLTextureNam(gTextureNames[27], "textures/block1.data", false, false);
-	initGLTextureNam(gTextureNames[28], "textures/block2.data", false, false);
-	initGLTextureNam(gTextureNames[29], "textures/block3.data", false, false);
+	initGLTextureNam(gTextureNames[27], "textures/block1.data", false, true);
+	initGLTextureNam(gTextureNames[28], "textures/block2.data", false, true);
+	initGLTextureNam(gTextureNames[29], "textures/block3.data", false, true);
 	initGLTextureNam(gTextureNames[30], "textures/snow18.data", false, false);
 	initGLTextureNam(gTextureNames[31], "textures/snow19.data", false, false);
 	initGLTextureNam(gTextureNames[32], "textures/darksnow1.data", false, true);
@@ -1813,9 +1813,9 @@ static void initialize(void) {
 	
 	assert(populateGOTN());
 	
-	const char *const kStartingLevel = "gpl/levels/level1.stl";
+	const char *const kStartingLevel = "gpl/levels/level26.stl";
 	assert(loadLevel(kStartingLevel));  // xxx
-	gCurrLevel = 1;  // hack for debugging xxx
+	gCurrLevel = 26;  // hack for debugging xxx
 	
 	assert(loadLevelBackground());
 	
@@ -2175,12 +2175,12 @@ bool draw(keys *const k, const int *const pResolutionWidth, const int *const pRe
 			break;
 		}
 		
-		// prevent bouncing between drawing a dummy frame and running twice
-		if (rand() > (RAND_MAX / 3 * 2)) {  // randomly skip [2nd,+inf) draws
-			if (physicsRanTimes > 1)
-				fprintf(stderr, "DEBUG: randomly skipping a physics run\n");
-			break;
-		}
+		//// prevent bouncing between drawing a dummy frame and running twice
+		//if (rand() > (RAND_MAX / 3 * 2)) {  // randomly skip [2nd,+inf) draws
+			//if (physicsRanTimes > 1)
+				//fprintf(stderr, "DEBUG: randomly skipping a physics run\n");
+			//break;
+		//}
 	}
 	if (physicsRanTimes == 0) {
 		fprintf(stderr, "DEBUG: physics ran 0 times (so drawing dummy frame)\n");
