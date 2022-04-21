@@ -75,7 +75,7 @@ static x_dat initializeXwin(
 	XSetWindowAttributes xswa = { 0 };
 	xswa.event_mask = KeyPressMask | KeyReleaseMask | ExposureMask;
 	
-	mutex_lock(pResolutionMtx);
+	mutexLock(pResolutionMtx);
 	xd.w = XCreateWindow(
 		xd.d,
 		x_drw,
@@ -90,7 +90,7 @@ static x_dat initializeXwin(
 		CWEventMask,
 		&xswa
 	);
-	mutex_unlock(pResolutionMtx);
+	mutexUnlock(pResolutionMtx);
 	
 	XMapWindow(xd.d, xd.w);
 	XSync(xd.d, false);
@@ -114,7 +114,7 @@ static void terminatePXEthread(
 {
 	int ret;
 	
-	mutex_lock(pmtx);
+	mutexLock(pmtx);
 	if (*pIsTiddyAlive > 0) {
 		ret = kill(*pTiddy, SIGTERM);
 		assert(0 == ret);
@@ -122,7 +122,7 @@ static void terminatePXEthread(
 	ret = thrd_join(*thr, NULL);  // wait for thread's death
 	assert(ret == thrd_success);
 	//g_isTiddyAlive = false;
-	mutex_unlock(pmtx);
+	mutexUnlock(pmtx);
 	mtx_destroy(pmtx);
 }
 
@@ -186,9 +186,18 @@ static void updateKeys(const XEvent *const e, keys *const k, mtx_t *const pmtx) 
 	const bool keyState = e->type == KeyPress;
 	uint32_t keyCode = e->xkey.keycode;
 	
-	mutex_lock(pmtx);
+	mutexLock(pmtx);
 	
-	if (keyCode == 38 || keyCode == 40) {
+	if (keyCode == 9) {
+		k->keyEsc = keyState;
+	} else if (keyCode == 112 || keyCode == 117) {
+		if (keyCode == 112)
+			k->keyPgUp = keyState;
+		if (keyCode == 117)
+			k->keyPgDown = keyState;
+		if (k->keyPgUp && k->keyPgDown)
+			k->keyPgUp = k->keyPgDown = false;
+	} else if (keyCode == 38 || keyCode == 40) {
 		if (keyCode == 38)
 			k->keyA = keyState;
 		if (keyCode == 40)
@@ -260,7 +269,7 @@ static void updateKeys(const XEvent *const e, keys *const k, mtx_t *const pmtx) 
 		fprintf(stdout, "Key %d %s\n", keyCode,
 			keyState ? "KeyPress" : "KeyRelease");
 	
-	mutex_unlock(pmtx);
+	mutexUnlock(pmtx);
 }
 
 struct pXEargs {
@@ -280,9 +289,9 @@ static int pumpXEvents(void *p) {
 	bool seenFirstEvent = false;
 	struct timespec prev = { 0 };
 
-	mutex_lock(args->pTiddyMtx);
+	mutexLock(args->pTiddyMtx);
 	*args->pTiddy = gettid();  // non-portable :(
-	mutex_unlock(args->pTiddyMtx);
+	mutexUnlock(args->pTiddyMtx);
 	
 	for (;;) {
 		XEvent e = { 0 };
@@ -295,9 +304,9 @@ static int pumpXEvents(void *p) {
 		}
 		
 		XLockDisplay(args->pxd->d);
-		mutex_lock(args->pTiddyMtx);
+		mutexLock(args->pTiddyMtx);
 		*args->pIsTiddyAlive = true;
-		mutex_unlock(args->pTiddyMtx);
+		mutexUnlock(args->pTiddyMtx);
 		XNextEvent(args->pxd->d, &e);
 		XWindowAttributes windowAttributes;
 		assert(0 != XGetWindowAttributes(
@@ -307,10 +316,10 @@ static int pumpXEvents(void *p) {
 		));
 		XUnlockDisplay(args->pxd->d);
 		
-		mutex_lock(args->pResolutionMtx);
+		mutexLock(args->pResolutionMtx);
 		*args->pResolutionWidth = windowAttributes.width;
 		*args->pResolutionHeight = windowAttributes.height;
-		mutex_unlock(args->pResolutionMtx);
+		mutexUnlock(args->pResolutionMtx);
 		
 		if (e.type != KeyPress && e.type != KeyRelease)
 			continue;
@@ -327,8 +336,8 @@ static int pumpXEvents(void *p) {
 			if (e.xkey.time/1000 < approxX11time_sec)  // approx = inaccurate
 				keyAge = approxX11time_sec - e.xkey.time/1000;
 			if (keyAge < 2) {
-				if (e.xkey.keycode == 24) {  // 'q'
-					mutex_lock(args->pTiddyMtx);
+				if (e.xkey.keycode == 9) {  // "Esc" key
+					mutexLock(args->pTiddyMtx);
 					*args->pIsTiddyAlive = false;
 					mtx_unlock(args->pTiddyMtx);
 					//assert(ret = thrd_success);  // XXX debug broken
@@ -347,10 +356,10 @@ static int pumpXEvents(void *p) {
 static void waitForThreadToLaunch(mtx_t *pmtx, const char *const pIsTiddyAlive) {
 	for (;;) {
 		bool shouldBreak = false;
-		mutex_lock(pmtx);
+		mutexLock(pmtx);
 		if (*pIsTiddyAlive != -1)  // has been initialized
 			shouldBreak = true;
-		mutex_unlock(pmtx);
+		mutexUnlock(pmtx);
 		if (shouldBreak)
 			break;
 		//fprintf(stderr, "waiting for thread to launch\n");
@@ -369,16 +378,16 @@ static void mainLoop(struct goodies *const goodies) {
 			frames = 0;
 		}
 
-		mutex_lock(&goodies->tiddyMtx);
-		mutex_lock(&goodies->resolutionMtx);
+		mutexLock(&goodies->tiddyMtx);
+		mutexLock(&goodies->resolutionMtx);
 		int ret;
 		ret = draw(
 			&goodies->k,
 			&goodies->resolutionWidth,
 			&goodies->resolutionHeight
 		);
-		mutex_unlock(&goodies->resolutionMtx);
-		mutex_unlock(&goodies->tiddyMtx);
+		mutexUnlock(&goodies->resolutionMtx);
+		mutexUnlock(&goodies->tiddyMtx);
 		if (!goodies->isTiddyAlive || !ret)
 			return;
 		

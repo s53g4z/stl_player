@@ -22,7 +22,7 @@ int intAsStrLen(int n);
 void printTM(uint8_t **const tm, const int width, const int height);
 void must(unsigned long long condition);
 void findSelfOnLinux(void);
-void mutex_lock(mtx_t *const mtx);
-void mutex_unlock(mtx_t *const mtx);
+void mutexLock(mtx_t *const mtx);
+void mutexUnlock(mtx_t *const mtx);
 
 #endif

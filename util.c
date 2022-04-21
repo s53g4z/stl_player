@@ -176,13 +176,13 @@ void findSelfOnLinux(void) {
 }
 
 // Lock a mutex. Always succeeds.
-void mutex_lock(mtx_t *const mtx) {
+void mutexLock(mtx_t *const mtx) {
 	int ret = mtx_lock(mtx);
 	must(ret == thrd_success);
 }
 
 // Unlock a mutex. Always succeeds.
-void mutex_unlock(mtx_t *const mtx) {
+void mutexUnlock(mtx_t *const mtx) {
 	int ret = mtx_unlock(mtx);
 	must(ret == thrd_success);
 }

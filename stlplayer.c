@@ -457,79 +457,6 @@ static bool tuxLandedOnBadguy(WorldItem **const colls,
 	return false;
 }
 
-// Process keyboard input.
-static void processInput(const keys *const k) {
-	assert(k && gWindowWidth && gWindowHeight);
-	
-	if (k->keyD || k->keyRight) {
-		if (tux->speedX <= 0)
-			tux->speedX = 0.33;
-		else
-			tux->speedX *= 2;
-		if (tux->speedX > fabs(TUX_RUN_SPEED))
-			tux->speedX = fabs(TUX_RUN_SPEED);
-		
-		setX(tux, tux->x + canMoveTo(tux, GDIRECTION_HORIZ));
-		if (!gTuxLastDirectionWasRight)
-			wiSwapTextures(tux);
-		gTuxLastDirectionWasRight = true;
-	}
-	if (k->keyA || k->keyLeft) {
-		if (tux->speedX >= 0)
-			tux->speedX = -0.33;
-		else
-			tux->speedX *= 2;
-		assert(TUX_RUN_SPEED != INT_MIN);
-		if (tux->speedX < -fabs(TUX_RUN_SPEED))
-			tux->speedX = -fabs(TUX_RUN_SPEED);
-		
-		setX(tux, tux->x + canMoveTo(tux, GDIRECTION_HORIZ));
-		if (gTuxLastDirectionWasRight)
-			wiSwapTextures(tux);
-		gTuxLastDirectionWasRight = false;
-	}
-	if (!k->keyD && !k->keyRight && !k->keyA && !k->keyLeft) {  // slow down
-		tux->speedX *= 0.66;
-		if (fabs(tux->speedX) < 0.1)
-			tux->speedX = 0;
-		setX(tux, tux->x + canMoveTo(tux, GDIRECTION_HORIZ));
-	}
-	
-	static bool jumped = true;
-	size_t colls_len;
-	WorldItem **const colls = isCollidingWith(tux, &colls_len,
-		GDIRECTION_BOTH);
-	bool onBadguy = tuxLandedOnBadguy(colls, colls_len);
-	bool onSurface = tuxLandedOnSurface(colls, colls_len);
-	// reset on all keys up
-	if (!k->keyW && !k->keyUp && !k->keySpace) {
-		if (tux->speedY < 0)
-			tux->speedY /= 2;
-		if (onSurface)
-			jumped = false;
-	}
-	if (onBadguy)
-		jumped = false;
-	if (k->keyW || k->keyUp || k->keySpace) {
-		if (!jumped && (onBadguy || onSurface)) {
-			tux->speedY = TUX_JUMP_SPEED;
-			//tux->y += canMoveTo(tux, GDIRECTION_VERT);
-			jumped = true;
-		}
-	}
-	free(colls);
-	
-	// 0 means not carrying, 1 means could carry, 2 means carrying something
-	if (k->keyCTRL && tux->state == 0) {
-		tux->state = 1;
-	} else if (!k->keyCTRL) {
-		tux->state = 0;
-		gTuxCarry = 0;
-	}
-	
-	maybeScrollScreen();
-}
-
 // Apply gravity to all WorldItems.
 static void applyGravity() {
 	for (size_t i = 0; i < gBuckets_len; i++)
@@ -1943,8 +1870,10 @@ static char *buildLevelFilePath(void) {
 
 // (Re)load a level.
 static void reloadLevel(bool ignoreCheckpoints) {
+	if (gCurrLevel < 1)
+		gCurrLevel = 26;
 	if (gCurrLevel > 26)
-		gCurrLevel = 1;  // hack
+		gCurrLevel = 1;
 	
 	point rp;
 	if (!ignoreCheckpoints)
@@ -1965,6 +1894,116 @@ static void reloadLevel(bool ignoreCheckpoints) {
 	}
 	
 	gTuxLastDirectionWasRight = true;  // tux starts facing right
+}
+
+static void updateKeyState(bool isKeyDown, char *pKeyState) {
+	if (*pKeyState == 0) {  // state: up
+		if (isKeyDown) {
+			*pKeyState = 1;
+		}
+	} else if (*pKeyState == 1) {  // state: down
+		if (!isKeyDown) {
+			*pKeyState = 2;
+		}
+	} else if (*pKeyState == 2) {  // state: completed a (consumed) keypress
+		*pKeyState = 0;
+	} else
+		assert(NULL);
+}
+
+// Process keyboard input.
+static void processInput(const keys *const k) {	
+	// 0 = up, 1 = down, 2 = keyup (completed a keypress)
+	static char keyPgUpState = 0, keyPgDownState = 0;
+	static char keyRState = 0;
+	updateKeyState(k->keyPgUp, &keyPgUpState);
+	updateKeyState(k->keyPgDown, &keyPgDownState);
+	updateKeyState(k->keyR, &keyRState);
+	
+	if (keyRState == 2) {
+		if (gNDeaths < 99999)
+			gNDeaths++;
+		reloadLevel(true);
+	}
+	
+	if (keyPgUpState == 2) {
+		gCurrLevel++;
+		gNDeaths = 0;
+		reloadLevel(true);
+	}
+	if (keyPgDownState == 2) {
+		gCurrLevel--;
+		gNDeaths = 0;
+		reloadLevel(true);
+	}
+	
+	if (k->keyD || k->keyRight) {
+		if (tux->speedX <= 0)
+			tux->speedX = 0.33;
+		else
+			tux->speedX *= 2;
+		if (tux->speedX > fabs(TUX_RUN_SPEED))
+			tux->speedX = fabs(TUX_RUN_SPEED);
+		
+		setX(tux, tux->x + canMoveTo(tux, GDIRECTION_HORIZ));
+		if (!gTuxLastDirectionWasRight)
+			wiSwapTextures(tux);
+		gTuxLastDirectionWasRight = true;
+	}
+	if (k->keyA || k->keyLeft) {
+		if (tux->speedX >= 0)
+			tux->speedX = -0.33;
+		else
+			tux->speedX *= 2;
+		assert(TUX_RUN_SPEED != INT_MIN);
+		if (tux->speedX < -fabs(TUX_RUN_SPEED))
+			tux->speedX = -fabs(TUX_RUN_SPEED);
+		
+		setX(tux, tux->x + canMoveTo(tux, GDIRECTION_HORIZ));
+		if (gTuxLastDirectionWasRight)
+			wiSwapTextures(tux);
+		gTuxLastDirectionWasRight = false;
+	}
+	if (!k->keyD && !k->keyRight && !k->keyA && !k->keyLeft) {  // slow down
+		tux->speedX *= 0.66;
+		if (fabs(tux->speedX) < 0.1)
+			tux->speedX = 0;
+		setX(tux, tux->x + canMoveTo(tux, GDIRECTION_HORIZ));
+	}
+	
+	static bool jumped = true;
+	size_t colls_len;
+	WorldItem **const colls = isCollidingWith(tux, &colls_len,
+		GDIRECTION_BOTH);
+	bool onBadguy = tuxLandedOnBadguy(colls, colls_len);
+	bool onSurface = tuxLandedOnSurface(colls, colls_len);
+	// reset on all keys up
+	if (!k->keyW && !k->keyUp && !k->keySpace) {
+		if (tux->speedY < 0)
+			tux->speedY /= 2;
+		if (onSurface)
+			jumped = false;
+	}
+	if (onBadguy)
+		jumped = false;
+	if (k->keyW || k->keyUp || k->keySpace) {
+		if (!jumped && (onBadguy || onSurface)) {
+			tux->speedY = TUX_JUMP_SPEED;
+			//tux->y += canMoveTo(tux, GDIRECTION_VERT);
+			jumped = true;
+		}
+	}
+	free(colls);
+	
+	// 0 means not carrying, 1 means could carry, 2 means carrying something
+	if (k->keyCTRL && tux->state == 0) {
+		tux->state = 1;
+	} else if (!k->keyCTRL) {
+		tux->state = 0;
+		gTuxCarry = 0;
+	}
+	
+	maybeScrollScreen();
 }
 
 // Perform a basic sanity check on buckets.
@@ -2108,8 +2147,8 @@ static void core(
 	clearScreen();
 	paintTM(lvl.backgroundtm);
 	paintTM(lvl.interactivetm);
-	paintTM(lvl.foregroundtm);
 	drawWorldItems();
+	paintTM(lvl.foregroundtm);
 	
 	if (tux->type == STL_TUX_DEAD) {  // reload the current level
 		displayDeathMessage();
