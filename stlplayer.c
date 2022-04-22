@@ -31,8 +31,8 @@ static float BADGUY_X_SPEED = -2;
 static float JUMPY_JUMP_SPEED = -8;
 
 static const uint8_t ignored_tiles[] = {
-	6, 126, 133,
-};  // todo burndown
+	6, 126, 127, 133, 134, 135
+};
 
 enum gOTNi {
 	STL_TUX_LEFT = 0,
@@ -1355,6 +1355,15 @@ static void maybeInitgTextureNames() {
 	initGLTextureNam(gTextureNames[124], "textures/snowbg3.data", false, true);
 	initGLTextureNam(gTextureNames[125], "textures/snowbg4.data", false, true);
 	gTextureNames[128] = gTextureNames[26];  // bonus 1up
+	initGLTextureNam(gTextureNames[129], "textures/goal1.data", false, true);
+	initGLTextureNam(gTextureNames[130], "textures/goal2.data", false, true);
+	initGLTextureNam(gTextureNames[132], "textures/finalgoal.data", false, true);
+	
+	initGLTextureNam(gTextureNames[136], "textures/run1.data", false, true);
+	initGLTextureNam(gTextureNames[137], "textures/run2.data", false, true);
+	initGLTextureNam(gTextureNames[138], "textures/run3.data", false, true);
+	initGLTextureNam(gTextureNames[139], "textures/run4.data", false, true);
+
 	
 	initGLTextureNam(gTextureNames[200], "textures/water-trans.data", false, true);
 	initGLTextureNam(gTextureNames[201], "textures/waves-trans.data", false, true);
@@ -2126,7 +2135,6 @@ static void core(
 	const int *const pResolutionWidth,
 	const int *const pResolutionHeight)
 {
-	assert(pResolutionWidth && pResolutionHeight);
 	setGLViewport(pResolutionWidth, pResolutionHeight);
 	
 	static bool initialized = false;
