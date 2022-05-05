@@ -3,38 +3,13 @@
 #ifndef STLPLAYER_H
 #define STLPLAYER_H
 
+#ifndef MACOSX
+#include "linux-graphics.h"
+#else
+#include <OpenGL/OpenGL.h>
+#endif
 #include "std.h"
 #include "util.h"
-
-enum stl_obj_type {
-	STL_WIN,
-	STL_BLOCK,
-	STL_BONUS,
-	STL_BRICK,
-	STL_BRICK_DESTROYED,
-	STL_INVISIBLE,
-	STL_COIN,
-	STL_TUX,
-	STL_TUX_DEAD,
-	STL_TUX_ASCENDED,
-	STL_DEAD,
-	STL_DEAD_MRICEBLOCK,
-	STL_KICKED_MRICEBLOCK,
-	STL_INVALID_OBJ,
-	STL_NO_MORE_OBJ,
-	SNOWBALL,
-	MRICEBLOCK,
-	STL_BOMB,
-	STL_BOMB_TICKING,
-	STL_BOMB_EXPLODING,
-	STALACTITE,
-	BOUNCINGSNOWBALL,
-	FLYINGSNOWBALL,
-	MONEY,
-	SPIKY,
-	JUMPY,
-	STL_FLAME
-};
 
 struct WorldItem {
 	enum stl_obj_type type;
@@ -51,34 +26,7 @@ typedef struct WorldItem WorldItem;
 
 typedef WorldItem Tux;
 
-struct stl_obj {
-	enum stl_obj_type type;
-	int x, y;
-};
-typedef struct stl_obj stl_obj;
-
-struct point {
-	int x, y;
-	struct point *next;
-};
-typedef struct point point;
-
-struct level {
-	bool hdr;
-	int version;
-	char *author;
-	char *name;
-	int width, height;
-	int start_pos_x, start_pos_y;
-	char *background, *music;
-	int time, gravity;
-	char *particle_system, *theme;
-	uint8_t **interactivetm, **backgroundtm, **foregroundtm;
-	stl_obj *objects;  // array of struct stl_obj
-	size_t objects_len, objects_cap;
-	point *reset_points;
-};
-typedef struct level stl;
+extern bool displayingMessage;
 
 void *nnmalloc(size_t sz);
 void *nnrealloc(void *, size_t);
@@ -93,5 +41,7 @@ bool writeStrTo(char **destination, const char **section, size_t *section_len);
 stl lrFailCleanup(const char *const level_orig, stl *lvl);
 stl levelReader(const char *const);
 void stlPrinter(const stl *const lvl);
+bool draw(keys *const, const int *const, const int *const);
+void core(keys *const, bool, const int *const, const int *const);
 
 #endif

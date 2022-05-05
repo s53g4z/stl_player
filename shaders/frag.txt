@@ -1,4 +1,9 @@
+//
+
+// GL 2.1 doesn't support the `precision` keyword
+#if __VERSION__ == 100
 precision mediump float;
+#endif
 
 uniform sampler2D texture;
 varying vec2 ytcoords;

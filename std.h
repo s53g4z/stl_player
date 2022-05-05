@@ -12,17 +12,24 @@
 #include <string.h>
 #include <float.h>
 #include <time.h>
+#ifndef MACOSX
 #include <threads.h>
+#endif
 #include <signal.h>
 #include <limits.h>
 
+#undef bool
+#undef false
+#undef true
 typedef unsigned char bool;
 #define true 1
 #define false 0
 
+#ifndef MACOSX
 #undef SSIZE_MAX
 #define SSIZE_MAX ((ssize_t)(~0ULL >> 1))
 #undef SIZE_MAX
 #define SIZE_MAX ((size_t)(~0ULL))
+#endif
 
 #endif

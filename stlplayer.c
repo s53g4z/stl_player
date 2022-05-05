@@ -1,6 +1,5 @@
 // stlplayer.c
 
-#include "initgl.h"
 #include "stlplayer.h"
 
 static const int gWindowWidth = 640, gWindowHeight = 480;
@@ -1669,6 +1668,11 @@ static bool populateGOTN(void) {
 
 // Load the level background into gTextureNames[256]. Can be called 1+ times.
 static bool loadLevelBackground(void) {
+#ifdef MACOSX
+	// weirdly-shaped texture is not accepted by all hardware
+	gTextureNames[256] = gTextureNames[0];
+	return true;
+#endif
 	if (strlen(lvl.background) == 0) {
 		gTextureNames[256] = gTextureNames[0];
 		return true;
@@ -1705,7 +1709,8 @@ static bool loadLevelBackground(void) {
 	);
 	free(imgdat);
 	
-	return glGetError() == GL_NO_ERROR;
+	GLenum glErr = glGetError();
+	return glErr == GL_NO_ERROR;
 }
 
 static uint32_t alphatiles[256];
@@ -1742,16 +1747,18 @@ static void initialize_alphatiles(void) {
 
 // Initialize stl_tux. Must run exactly once.
 static void initialize(void) {
+#ifndef MACOSX
 	findSelfOnLinux();
+#endif
 	
 	initialize_prgm();
 	maybeInitgTextureNames();
 	
 	assert(populateGOTN());
 	
-	const char *const kStartingLevel = "gpl/levels/level26.stl";
+	const char *const kStartingLevel = "gpl/levels/level1.stl";
 	assert(loadLevel(kStartingLevel));  // xxx
-	gCurrLevel = 26;  // hack for debugging xxx
+	gCurrLevel = 1;  // hack for debugging xxx
 	
 	assert(loadLevelBackground());
 	
@@ -1766,29 +1773,15 @@ static bool isOffscreen(const WorldItem *const w) {
 
 // Draw the vertices with texnam. (The vertex shader will NOT flip y.)
 static void drawGLvertices(const float *const vertices, const uint32_t texnam) {
-	const float resolution[] = {
-		gWindowWidth, gWindowHeight,
-		gWindowWidth, gWindowHeight,
-		gWindowWidth, gWindowHeight,
-		gWindowWidth, gWindowHeight,
+	const float vec2Vertices[] = {
+		vertices[0], vertices[1],	0.0001, 0.0001,
+		vertices[3], vertices[4],	0.0001, 0.9999,
+		vertices[6], vertices[7],	0.9999, 0.0001,
+		vertices[9], vertices[10],	0.9999, 0.9999,
 	};
-	glVertexAttribPointer(11, 2, GL_FLOAT, GL_FALSE, 0, resolution);
-	glEnableVertexAttribArray(11);
-	glBindAttribLocation(prgm, 11, "windowResolution");
-	
-	glVertexAttribPointer(5, 3, GL_FLOAT, GL_FALSE, 0, vertices);
-	glEnableVertexAttribArray(5);
-	glBindAttribLocation(prgm, 5, "vertices");
-	
-	static const float tcoords[] = {
-		0.0001, 0.0001,
-		0.0001, 0.9999,
-		0.9999, 0.0001,
-		0.9999, 0.9999,
-	};
-	glVertexAttribPointer(9, 2, GL_FLOAT, GL_FALSE, 0, tcoords);
-	glEnableVertexAttribArray(9);
-	glBindAttribLocation(prgm, 9, "tcoords");
+	glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 0, vec2Vertices);
+	glEnableVertexAttribArray(0);
+	glBindAttribLocation(prgm, 0, "verticesAndTexcoords");
 	
 	assert(glGetError() == GL_NO_ERROR);
 
@@ -2022,7 +2015,7 @@ static void verifyBuckets(void) {
 			assert(w->x / BUCKETS_SIZE == (ssize_t)i);
 }
 
-static bool displayingMessage = false;
+bool displayingMessage = false;
 
 // Return the number of ch encountered in msg. todo move to util.c
 static size_t count(const char *msg, const char ch) {
@@ -2129,7 +2122,7 @@ void setGLViewport(
 }
 
 // Core game loop. Runs everything else. Called by draw().
-static void core(
+void core(
 	keys *const k,
 	bool runPhysics,
 	const int *const pResolutionWidth,
@@ -2157,7 +2150,6 @@ static void core(
 	paintTM(lvl.interactivetm);
 	drawWorldItems();
 	paintTM(lvl.foregroundtm);
-	
 	if (tux->type == STL_TUX_DEAD) {  // reload the current level
 		displayDeathMessage();
 		displayingMessage = true;
@@ -2177,6 +2169,34 @@ static void core(
 			reloadLevel(true);
 		}
 	}
+	
+	// debug TODO remove me
+//	const float vertices[] = {
+//		-33,	-33,	0.0f, 1,
+//		33,	-33,	0.0f, 1,
+//		0,		33,	0.0f, 1,
+//		1000,	-1000,	0.0f, 1,
+//	};
+//	glEnableVertexAttribArray(0);
+//	glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 0, vertices);
+//	glBindAttribLocation(prgm, 0, "verticesAndTexcoords");
+//	glLinkProgram(prgm);
+//	glDrawArrays(GL_TRIANGLE_STRIP, 0, 3);
+	
+//	glColor3f(0, 0, 1);
+//	glBegin(GL_TRIANGLES);
+//	glVertex2f(0.0, 0.0);
+//	glVertex2f(0.9, 0.0);
+//	glVertex2f(0.9, 0.9);
+//	glEnd();
+//	fprintf(stderr, "DEBUG: vendor is %s\n", glGetString(GL_VENDOR));
+//	fprintf(stderr, "DEBUG: renderer is %s\n", glGetString(GL_RENDERER));
+//	fprintf(stderr, "DEBUG: version is %s\n", glGetString(GL_VERSION));
+//	fprintf(stderr, "DEBUG: glsl ver is %s\n", glGetString(GL_SHADING_LANGUAGE_VERSION));
+//	fprintf(stderr, "DEBUG: extensions are %s\n", glGetString(GL_EXTENSIONS));
+
+	assert(glGetError() == GL_NO_ERROR);
+	//raise(SIGKILL);
 }
 
 // Like strcmp(), but for struct timespec.
@@ -2198,6 +2218,7 @@ void tsadd(struct timespec *const t1, int32_t ns) {
 	assert(t1->tv_nsec > 0 && t1->tv_nsec < NSONE && t1->tv_sec >= 0);
 }
 
+#ifndef MACOSX
 // Entry point for initgl.
 bool draw(keys *const k, const int *const pResolutionWidth, const int *const pResolutionHeight) {
 	static struct timespec then = { 0 }, now = { 0 };
@@ -2211,7 +2232,7 @@ bool draw(keys *const k, const int *const pResolutionWidth, const int *const pRe
 		srand((uint32_t)now.tv_nsec);
 	}
 	
-	bool physicsRanTimes = 0;
+	uint8_t physicsRanTimes = 0;
 	while (tscmp(&then, &now) < 0) {
 		core(k, true && !displayingMessage, pResolutionWidth, pResolutionHeight);
 		tsadd(&then, NSONE / 60);
@@ -2237,4 +2258,5 @@ bool draw(keys *const k, const int *const pResolutionWidth, const int *const pRe
 	
 	return true;
 }
+#endif
 

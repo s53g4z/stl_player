@@ -1,6 +1,6 @@
-#include "stlplayer.h"
-#include "initgl.h"  // gl includes
-#include "util.h"  // forward declarations for util.c
+// util.c
+
+#include "util.h"
 
 char gSelf[4096];
 int gSelf_len;
@@ -24,6 +24,7 @@ char *safe_read(const char *const filename, ssize_t *has_read) {
 	
 	char *buf = malloc(1);
 	ssize_t bufsiz = 1;
+	
 	for (;;) {
 		if (*has_read > SSIZE_MAX - (ssize_t)buf) {
 			return safe_read_fail(buf, has_read, fd);
@@ -175,6 +176,7 @@ void findSelfOnLinux(void) {
 	fprintf(stderr, "DEBUG: path w/out filename: %s\n", gSelf);
 }
 
+#ifndef MACOSX
 // Lock a mutex. Always succeeds.
 void mutexLock(mtx_t *const mtx) {
 	int ret = mtx_lock(mtx);
@@ -186,3 +188,4 @@ void mutexUnlock(mtx_t *const mtx) {
 	int ret = mtx_unlock(mtx);
 	must(ret == thrd_success);
 }
+#endif

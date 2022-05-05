@@ -1,0 +1,9 @@
+//
+// Prefix header for all source files of the 'STLPlayerMac' target in the 'STLPlayerMac' project
+//
+
+#define MACOSX 1
+
+#ifdef __OBJC__
+    #import <Cocoa/Cocoa.h>
+#endif

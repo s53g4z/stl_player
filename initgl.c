@@ -10,21 +10,13 @@ static egl_dat initializeEgl(void) {
 	ret = eglInitialize(ed.d, NULL, NULL);
 	assert(ret == EGL_TRUE);
 	
-#ifdef USE_GLES2
 	ret = eglBindAPI(EGL_OPENGL_ES_API);
-#else
-	ret = eglBindAPI(EGL_OPENGL_API);
-#endif
 	assert(ret == EGL_TRUE);
 	
 	const EGLint attrib_list[] = {
 		EGL_ALPHA_SIZE, 8,
 		EGL_BLUE_SIZE, 8,
-#ifdef USE_GLES2
 		EGL_CONFORMANT, EGL_OPENGL_ES2_BIT,
-#else
-		EGL_CONFORMANT, EGL_OPENGL_BIT,
-#endif
 		EGL_GREEN_SIZE, 8,
 		EGL_RED_SIZE, 8,
 		EGL_DEPTH_SIZE, 24,
@@ -38,11 +30,7 @@ static egl_dat initializeEgl(void) {
 	// hxxps://community.arm.com/developer/tools-software/oss-platforms
 	// /b/android-blog/posts/check-your-context-if-glcreateshader-returns-0
 	// -and-gl_5f00_invalid_5f00_operation
-#ifdef USE_GLES2
 	EGLint attribs[] = { EGL_CONTEXT_CLIENT_VERSION, 2, EGL_NONE };
-#else
-	EGLint attribs[] = { EGL_CONTEXT_CLIENT_VERSION, 1, EGL_NONE };
-#endif
 	ed.cxt = eglCreateContext(ed.d, ed.cfg[0], EGL_NO_CONTEXT, attribs);
 	
 	assert(eglGetError() == EGL_SUCCESS);
