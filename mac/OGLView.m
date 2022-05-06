@@ -8,11 +8,7 @@
 
 #import "OGLView.h"
 
-@implementation OGLView : NSOpenGLView {
-	time_t prevTime;
-	unsigned long long fps;
-	keys k;
-}
+@implementation OGLView : NSOpenGLView
 
 - (void)checkCGLErrCode:(CGLError *)errCode {
 	if (*errCode != 0) {
@@ -92,33 +88,6 @@
 		fprintf(stderr, "ERROR: GL generated error code %d\n", glErr);
 }
 
-- (void)draw_ {
-	[self maybePrintFPS];
-	
-	CGLContextObj cxt = [[self openGLContext] CGLContextObj];
-	
-	CGLError errCode;
-	errCode = CGLSetCurrentContext(cxt);
-	[self checkCGLErrCode:&errCode];
-	
-	//double red = [self randBetween0and1];
-	//double green = [self randBetween0and1];
-	double blue = [self randBetween0and1] / 2.0;
-	glClearColor(0, 0, blue, 1.0);
-	glClear(GL_COLOR_BUFFER_BIT);
-	
-	glColor3f(1, 0, 0);
-	glBegin(GL_TRIANGLES);
-	glVertex2f(-0.5, 0.0);
-	glVertex2f(0.5, 0.0);
-	glVertex2f(0.0, 0.5);
-	glEnd();
-	
-	glFlush();
-	[[self openGLContext]flushBuffer];
-	[self checkGLErrCode];
-}
-
 - (void)draw {
 	[self maybePrintFPS];
 	
@@ -128,9 +97,12 @@
 	errCode = CGLSetCurrentContext(cxtCGL);
 	[self checkCGLErrCode:&errCode];
 	
-	//keys k;  // todo: wire up
-	//memset(&k, 0x00, sizeof(k));
-	int resWidth = 640, resHeight = 480;  // todo: wire up
+	int resWidth = NSWidth([self frame]);
+	int resHeight = NSHeight([self frame]);
+	if (resWidth < 10)
+		resWidth = 10;
+	if (resHeight < 10)
+		resHeight = 10;
 	
 	must(sizeof(double) == sizeof(NSTimeInterval));
 	static double then = 0.0, now = 0.0;
