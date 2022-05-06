@@ -7,6 +7,7 @@
 #include "linux-graphics.h"
 #else
 #include <OpenGL/OpenGL.h>
+#include <OpenGL/gl.h>
 #endif
 #include "std.h"
 #include "util.h"

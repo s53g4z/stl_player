@@ -12,8 +12,11 @@
 #include <string.h>
 #include <float.h>
 #include <time.h>
-#ifndef MACOSX
+#if (!defined(MACOSX))  // i.e., is Linux
 #include <threads.h>
+#endif
+#if (defined(M1MAC))
+#include <pthread.h>
 #endif
 #include <signal.h>
 #include <limits.h>

@@ -1668,7 +1668,7 @@ static bool populateGOTN(void) {
 
 // Load the level background into gTextureNames[256]. Can be called 1+ times.
 static bool loadLevelBackground(void) {
-#ifdef MACOSX
+#if (defined(MACOSX) && !defined(M1MAC))
 	// weirdly-shaped texture is not accepted by all hardware
 	gTextureNames[256] = gTextureNames[0];
 	return true;

@@ -171,7 +171,7 @@ void findSelfOnLinux(void) {
 		self_len--;
 	gSelf[self_len + 1] = '\0';
 	assert((size_t)(self_len + 1) == strlen(gSelf));
-	gSelf_len = self_len + 1;
+	gSelf_len = (int)self_len + 1;
 	
 	fprintf(stderr, "DEBUG: path w/out filename: %s\n", gSelf);
 }

@@ -92,10 +92,11 @@ int intAsStrLen(int n);
 void printTM(uint8_t **const tm, const int width, const int height);
 void must(unsigned long long condition);
 void findSelfOnLinux(void);
-#ifndef MACOSX
+#if (!defined(MACOSX))  // i.e., is Linux
 void mutexLock(mtx_t *const mtx);
 void mutexUnlock(mtx_t *const mtx);
-#else
+#endif
+#if defined(MACOSX)
 void findSelfOnMac(void);
 #endif
 
